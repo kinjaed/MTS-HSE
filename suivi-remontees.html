@@ -42,6 +42,11 @@
   .right > .panel:nth-child(1) { grid-column: 1; grid-row: 1; }
   .right > .panel:nth-child(2) { grid-column: 1; grid-row: 2; }
   .right > .photos { grid-column: 2; grid-row: 1 / span 2; }
+  .hrow { display: flex; align-items: center; justify-content: space-between; padding-top: 4px !important; padding-bottom: 4px !important; }
+  .hbtn { border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; cursor: pointer; padding: 2px 8px; font: inherit; }
+  .hbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .hbtn:disabled { opacity: .4; cursor: not-allowed; }
+  .hbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .thumbs { flex: 1; overflow: auto; padding: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
             gap: 6px; align-content: start; }
   .thumbs .empty { grid-column: 1 / -1; padding: 2px; }
@@ -58,7 +63,7 @@
                width: 42px; height: 42px; border-radius: 50%; cursor: pointer; }
   .lb button:hover { background: rgba(255,255,255,.3); }
   .lb button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-  .lb-x { top: 10px; right: 10px; } .lb-prev { left: 10px; top: 50%; margin-top: -21px; } .lb-next { right: 10px; top: 50%; margin-top: -21px; }
+  .lb-x { top: 10px; right: 10px; } .lb-dl { top: 10px; right: 62px; font-size: 20px !important; } .lb-prev { left: 10px; top: 50%; margin-top: -21px; } .lb-next { right: 10px; top: 50%; margin-top: -21px; }
   .lb-cap { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; padding: 0 60px; }
   .text { padding: 10px 12px; overflow: auto; white-space: pre-wrap; flex: 1; }
   .empty { color: var(--muted); font-style: italic; }
@@ -124,11 +129,12 @@
     <div class="right">
       <section class="panel"><h2>Description des faits</h2><div class="text" id="desc"></div></section>
       <section class="panel"><h2>Proposition d’amélioration</h2><div class="text" id="prop"></div></section>
-      <section class="panel photos"><h2>Photos</h2><div class="thumbs" id="thumbs"></div></section>
+      <section class="panel photos"><h2 class="hrow"><span>Photos</span><button type="button" id="dlall" class="hbtn" title="Tout télécharger" aria-label="Télécharger toutes les photos" disabled>⬇</button></h2><div class="thumbs" id="thumbs"></div></section>
     </div>
   </div>
 
 <div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo agrandie">
+  <button class="lb-dl" id="lbdl" aria-label="Télécharger cette photo" title="Télécharger">⬇</button>
   <button class="lb-x" id="lbx" aria-label="Fermer">×</button>
   <button class="lb-prev" id="lbp" aria-label="Photo précédente">‹</button>
   <img id="lbimg" alt="">
@@ -265,7 +271,7 @@ function setText(el, v) {
   if (!s) el.textContent = selectedId ? "—" : "Sélectionnez une ligne.";
 }
 // ----- Photos (colonne de type Pièces jointes) -----
-let tokenInfo = null, photoKey = "", photoSeq = 0, lbList = [], lbIndex = 0;
+let photoItems = [], tokenInfo = null, photoKey = "", photoSeq = 0, lbList = [], lbIndex = 0;
 const metaCache = {}, IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
 async function auth() {
   if (!tokenInfo || Date.now() > tokenInfo.exp - 30000) {
@@ -293,6 +299,7 @@ async function renderPhotos() {
   if (key === photoKey) return;
   photoKey = key;
   const seq = ++photoSeq;
+  photoItems = []; $("dlall").disabled = true;
   box.innerHTML = "";
   const note = t => { const d = document.createElement("div"); d.className = "empty"; d.textContent = t; box.appendChild(d); };
   if (!r) return note("Sélectionnez une ligne.");
@@ -302,6 +309,7 @@ async function renderPhotos() {
     if (seq !== photoSeq) return;
     const items = ids.map((id, i) => ({ id, url: urls[i], ...metas[i] }));
     lbList = items.filter(p => p.isImg);
+    photoItems = items; $("dlall").disabled = false;
     for (const p of items) {
       if (p.isImg) {
         const b = document.createElement("button");
@@ -319,6 +327,19 @@ async function renderPhotos() {
     }
   } catch (e) { if (seq === photoSeq) { box.innerHTML = ""; note("Photos indisponibles."); } }
 }
+
+async function download(p) {
+  const url = await attUrl(p.id);
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(res.status);
+    const u = URL.createObjectURL(await res.blob()), a = document.createElement("a");
+    a.href = u; a.download = p.name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 10000);
+  } catch (e) { window.open(url, "_blank", "noopener"); }
+}
+$("dlall").onclick = async () => { for (const p of photoItems) { await download(p); await new Promise(r => setTimeout(r, 400)); } };
+$("lbdl").onclick = e => { e.stopPropagation(); if (lbList[lbIndex]) download(lbList[lbIndex]); };
 
 async function showLb(i) {
   const n = lbList.length;
