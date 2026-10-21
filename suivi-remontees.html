@@ -66,7 +66,7 @@
     <div class="tabs-wrap">
       <div class="tabs" id="tabs" role="tablist" aria-label="Filtrer par type"><span class="thumb" id="thumb"></span></div>
     </div>
-    <label class="chk"><input type="checkbox" id="saisie"> Saisie</label>
+    <label class="chk" title="Cochée : affiche toutes les lignes. Décochée : masque les lignes déjà saisies."><input type="checkbox" id="saisie"> Saisies</label>
   </div>
 
   <div class="msg" id="warn" hidden style="padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)"></div>
@@ -87,15 +87,28 @@
   </div>
 
 <script>
-const COLS = [
-  { name: "Type",        title: "Type",                   type: "Choice,Text,Any", description: "Colonne Choix unique servant de filtre" },
-  { name: "Collaborateur", title: "Collaborateur",        type: "Any" },
-  { name: "Lieu",        title: "Lieu - Chantier",        type: "Any" },
-  { name: "Date",        title: "Date de l’évènement",    type: "Date,DateTime,Any" },
-  { name: "Description", title: "Description des faits",  type: "Text,Any" },
-  { name: "Proposition", title: "Proposition d’amélioration", type: "Text,Any" },
-  { name: "Saisie",      title: "Saisie",                 type: "Bool" }
+// Détection automatique des colonnes d’après leur nom (accents et ponctuation ignorés)
+const FIELDS = [
+  ["Type",          "Type",                     k => k.startsWith("type")],
+  ["Collaborateur", "Collaborateur",            k => k.startsWith("collab")],
+  ["Lieu",          "Lieu - Chantier",          k => k.includes("lieu") || k.includes("chantier")],
+  ["Date",          "Date de l’évènement",      k => k.startsWith("date")],
+  ["Description",   "Description des faits",    k => k.startsWith("descr")],
+  ["Proposition",   "Proposition d’amélioration", k => k.startsWith("propos")],
+  ["Saisie",        "Saisie",                   k => k.startsWith("saisi")]
 ];
+const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+let missingFields = [], knownKeys = [];
+function normalize(raw) {
+  const keys = Object.keys(raw[0] || {}).filter(k => k !== "id" && !k.startsWith("gristHelper_"));
+  knownKeys = keys;
+  const map = {}; missingFields = [];
+  for (const [f, title, test] of FIELDS) {
+    const k = keys.find(k => !Object.values(map).includes(k) && test(norm(k)));
+    if (k) map[f] = k; else missingFields.push(title);
+  }
+  return raw.map(r => { const o = { id: r.id }; for (const f in map) o[f] = r[map[f]]; return o; });
+}
 
 let records = [], filter = "__ALL__", selectedId = null, mapped = true;
 const $ = id => document.getElementById(id);
@@ -148,8 +161,8 @@ function moveThumb() {
 }
 
 function visible() {
-  const wanted = $("saisie").checked;
-  return records.filter(r => (filter === "__ALL__" || txt(r.Type) === filter) && isTrue(r.Saisie) === wanted);
+  const showAll = $("saisie").checked;
+  return records.filter(r => (filter === "__ALL__" || txt(r.Type) === filter) && (showAll || !isTrue(r.Saisie)));
 }
 
 function renderRows() {
@@ -183,10 +196,9 @@ function renderDetail() {
 }
 
 function checkMapping() {
-  const w = $("warn"), missing = [];
-  if (records.length) for (const c of COLS) if (records.every(r => r[c.name] === undefined)) missing.push(c.title);
-  w.hidden = !missing.length;
-  w.textContent = missing.length ? "Colonnes non reçues (vérifiez l’association dans le panneau du widget) : " + missing.join(", ") : "";
+  const w = $("warn");
+  w.hidden = !(records.length && missingFields.length);
+  w.textContent = w.hidden ? "" : "Colonnes introuvables : " + missingFields.join(", ") + ". Colonnes de la table : " + knownKeys.join(", ");
 }
 function render() {
   if (selectedId !== null && !visible().some(r => r.id === selectedId)) selectedId = null;
@@ -195,22 +207,18 @@ function render() {
 
 $("saisie").onchange = () => { selectedId = null; render(); };
 
-grist.ready({ columns: COLS, requiredAccess: "read table", allowSelectBy: true });
+grist.ready({ requiredAccess: "read table" });
 
 grist.onRecords(recs => {
-  mapped = !!(recs && recs.length === 0) || !!(recs && recs[0] && "Type" in recs[0]);
-  records = (recs || []).filter(r => r && r.id !== undefined);
-  if (selectedId !== null && !records.some(r => r.id === selectedId)) selectedId = null;
+  records = normalize((recs || []).filter(r => r && r.id !== undefined));
   render();
-}, { mapColumnNames: true });
+});
 
-// Suit le curseur Grist (utile si le widget est lié à une autre vue)
 grist.onRecord(rec => {
-  if (rec && rec.id && rec.id !== selectedId) {
-    selectedId = rec.id;
-    render();
+  if (rec && rec.id && rec.id !== selectedId && visible().some(r => r.id === rec.id)) {
+    selectedId = rec.id; renderRows(); renderDetail();
   }
-}, { mapColumnNames: true });
+});
 
 window.addEventListener("resize", moveThumb);
 </script>
