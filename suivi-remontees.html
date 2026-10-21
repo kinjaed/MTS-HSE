@@ -51,7 +51,8 @@
   tbody tr.sel { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
   table { table-layout: fixed; }
   th.c-date, td.date { width: 106px; white-space: nowrap; }
-  th.c-collab { width: calc((100% - 170px) / 2 - 24px); }
+  th.c-collab { width: calc((100% - 214px) / 2 - 24px); }
+  th.c-ri, td.ri { width: 44px; text-align: center; font-weight: 600; }
   th.c-sw, td.sw { width: 64px; text-align: center; }
   td { overflow: hidden; text-overflow: ellipsis; }
   th, td { padding: 8px 8px; }
@@ -91,7 +92,7 @@
     <section class="panel">
       <div class="tbl">
         <table>
-          <thead><tr><th class="c-date">Date</th><th class="c-collab">Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
+          <thead><tr><th class="c-date">Date</th><th class="c-ri">RI</th><th class="c-collab">Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
         <div class="msg" id="msg" hidden></div>
@@ -107,6 +108,7 @@
 // Détection automatique des colonnes d’après leur nom (accents et ponctuation ignorés)
 const FIELDS = [
   ["Type",          "Type",                     k => k.startsWith("type")],
+  ["RI",            "RI",                       k => k === "ri"],
   ["Collaborateur", "Collaborateur",            k => k.startsWith("collab")],
   ["Lieu",          "Lieu - Chantier",          k => k.includes("lieu") || k.includes("chantier")],
   ["Date",          "Date de l’évènement",      k => k.startsWith("date")],
@@ -196,10 +198,11 @@ function renderRows() {
   for (const r of rows) {
     const tr = document.createElement("tr");
     tr.className = r.id === selectedId ? "sel" : "";
-    tr.innerHTML = `<td class="date"></td><td></td><td></td><td class="sw"><label><input type="checkbox" aria-label="Saisie"><span class="knob"></span></label></td>`;
+    tr.innerHTML = `<td class="date"></td><td class="ri"></td><td></td><td></td><td class="sw"><label><input type="checkbox" aria-label="Saisie"><span class="knob"></span></label></td>`;
     tr.children[0].textContent = fmtDate(r.Date);
-    tr.children[1].textContent = txt(r.Collaborateur);
-    tr.children[2].textContent = txt(r.Lieu);
+    tr.children[1].textContent = txt(r.RI);
+    tr.children[2].textContent = txt(r.Collaborateur);
+    tr.children[3].textContent = txt(r.Lieu);
     const cb = tr.querySelector("input");
     cb.checked = isTrue(r.Saisie);
     cb.disabled = !saisieKey;
