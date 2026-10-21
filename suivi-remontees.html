@@ -118,13 +118,13 @@ const FIELDS = [
 ];
 const norm0 = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-let missingFields = [], knownKeys = [], saisieKey = null;
+let missingFields = [], knownKeys = [], saisieKey = null, labels = {}, rawRecs = [];
 function normalize(raw) {
   const keys = Object.keys(raw[0] || {}).filter(k => k !== "id" && !k.startsWith("gristHelper_"));
-  knownKeys = keys;
+  knownKeys = keys.map(k => labels[k] && labels[k] !== k ? `${k} (${labels[k]})` : k);
   const map = {}; missingFields = [];
   for (const [f, title, test] of FIELDS) {
-    const k = keys.find(k => !Object.values(map).includes(k) && test(norm(k)));
+    const k = keys.find(k => !Object.values(map).includes(k) && (test(norm(k)) || (labels[k] && test(norm(labels[k])))));
     if (k) map[f] = k; else missingFields.push(title);
   }
   saisieKey = map.Saisie || null;
@@ -250,9 +250,22 @@ $("q").oninput = () => { selectedId = null; render(); };
 grist.ready({ requiredAccess: "full" });
 
 grist.onRecords(recs => {
-  records = normalize((recs || []).filter(r => r && r.id !== undefined));
+  rawRecs = (recs || []).filter(r => r && r.id !== undefined);
+  records = normalize(rawRecs);
   render();
 });
+
+// Récupère les libellés des colonnes (au cas où l’identifiant diffère du titre, ex. « RI »)
+(async () => {
+  try {
+    const tid = await grist.selectedTable.getTableId();
+    const tabs = await grist.docApi.fetchTable("_grist_Tables");
+    const ref = tabs.id[tabs.tableId.indexOf(tid)];
+    const cols = await grist.docApi.fetchTable("_grist_Tables_column");
+    cols.colId.forEach((c, i) => { if (cols.parentId[i] === ref) labels[c] = cols.label[i]; });
+    if (rawRecs.length) { records = normalize(rawRecs); render(); }
+  } catch (e) { console.warn("Libellés indisponibles", e); }
+})();
 
 grist.onRecord(rec => {
   if (rec && rec.id && rec.id !== selectedId && visible().some(r => r.id === rec.id)) {
