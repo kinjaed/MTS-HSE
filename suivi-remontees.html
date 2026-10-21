@@ -8,11 +8,11 @@
 <style>
   :root {
     --bg: #f6f7f9; --panel: #fff; --ink: #14213d; --muted: #6b7385;
-    --line: #d9dde5; --accent: #1f4fd8; --accent-ink: #fff; --sel: #e8eefc;
+    --line: #d9dde5; --head: #eceef1; --mint: #e3f4e7; --accent: #1f4fd8; --accent-ink: #fff; --sel: #e8eefc;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #11151c; --panel: #1a2029; --ink: #e8ecf4; --muted: #93a0b8;
-            --line: #2b3442; --accent: #5b8cff; --accent-ink: #0b1220; --sel: #223055; }
+            --line: #2b3442; --head: #262e3a; --mint: #1f3a2b; --accent: #5b8cff; --accent-ink: #0b1220; --sel: #223055; }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -36,25 +36,26 @@
   .main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(300px, 0.8fr) minmax(300px, 1.2fr); gap: 12px; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; min-height: 0;
            display: flex; flex-direction: column; overflow: hidden; }
-  .panel > h2 { margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 700; color: var(--muted);
+  .panel > h2 { background: var(--head); margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 700; color: var(--muted);
            border-bottom: 1px solid var(--line); }
   .right { display: grid; grid-template-rows: 1fr 1fr; gap: 12px; min-height: 0; }
   .text { padding: 10px 12px; overflow: auto; white-space: pre-wrap; flex: 1; }
   .empty { color: var(--muted); font-style: italic; }
   .tbl { overflow: auto; flex: 1; }
   table { width: 100%; border-collapse: collapse; }
-  th { position: sticky; top: 0; background: var(--panel); text-align: left; padding: 8px 12px;
+  th { position: sticky; top: 0; background: var(--head); text-align: left; padding: 8px 12px;
        font-size: 13px; border-bottom: 1px solid var(--line); }
   td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: var(--sel); }
   tbody tr.sel { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
   table { table-layout: fixed; }
-  th.c-date, td.date { width: 82px; white-space: nowrap; }
+  th.c-date, td.date { width: 106px; white-space: nowrap; }
+  th.c-collab { width: calc((100% - 170px) / 2 - 24px); }
   th.c-sw, td.sw { width: 64px; text-align: center; }
   td { overflow: hidden; text-overflow: ellipsis; }
   th, td { padding: 8px 8px; }
-  .search { width: 100%; padding: 8px 12px; font: inherit; color: var(--ink); background: var(--panel);
+  .search { width: 100%; padding: 8px 12px; font: inherit; color: var(--ink); background: var(--mint);
             border: 1px solid var(--line); border-radius: 8px; }
   .search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .sw label { display: inline-block; position: relative; width: 36px; height: 20px; cursor: pointer; vertical-align: middle; }
@@ -84,13 +85,13 @@
     <label class="chk" title="Cochée : affiche toutes les lignes. Décochée : masque les lignes déjà saisies."><input type="checkbox" id="saisie"> Saisies</label>
   </div>
 
-  <input type="search" class="search" id="q" placeholder="Rechercher dans toutes les colonnes…" aria-label="Rechercher">
+  <input type="search" class="search" id="q" placeholder="Remplacer..." aria-label="Rechercher">
   <div class="msg" id="warn" hidden style="padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)"></div>
   <div class="main">
     <section class="panel">
       <div class="tbl">
         <table>
-          <thead><tr><th class="c-date">Date</th><th>Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
+          <thead><tr><th class="c-date">Date</th><th class="c-collab">Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
         <div class="msg" id="msg" hidden></div>
