@@ -38,7 +38,28 @@
            display: flex; flex-direction: column; overflow: hidden; }
   .panel > h2 { background: var(--head); margin: 0; padding: 8px 12px; font-size: 13px; font-weight: 700; color: var(--muted);
            border-bottom: 1px solid var(--line); }
-  .right { display: grid; grid-template-rows: 1fr 1fr; gap: 12px; min-height: 0; }
+  .right { display: grid; grid-template-columns: minmax(0, 1fr) 150px; grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; min-height: 0; }
+  .right > .panel:nth-child(1) { grid-column: 1; grid-row: 1; }
+  .right > .panel:nth-child(2) { grid-column: 1; grid-row: 2; }
+  .right > .photos { grid-column: 2; grid-row: 1 / span 2; }
+  .thumbs { flex: 1; overflow: auto; padding: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+            gap: 6px; align-content: start; }
+  .thumbs .empty { grid-column: 1 / -1; padding: 2px; }
+  .th { padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--head); overflow: hidden; cursor: pointer;
+        aspect-ratio: 1; display: flex; align-items: center; justify-content: center; text-decoration: none; color: var(--ink); }
+  .th:hover { border-color: var(--accent); }
+  .th:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .th.file { flex-direction: column; font-size: 11px; padding: 4px; text-align: center; word-break: break-all; }
+  .lb { position: fixed; inset: 0; z-index: 100; background: rgba(10, 14, 22, .9); display: flex; align-items: center; justify-content: center; }
+  .lb[hidden] { display: none; }
+  .lb img { max-width: calc(100vw - 32px); max-height: calc(100vh - 64px); object-fit: contain; border-radius: 4px; }
+  .lb button { position: absolute; border: 0; background: rgba(255,255,255,.15); color: #fff; font-size: 26px; line-height: 1;
+               width: 42px; height: 42px; border-radius: 50%; cursor: pointer; }
+  .lb button:hover { background: rgba(255,255,255,.3); }
+  .lb button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  .lb-x { top: 10px; right: 10px; } .lb-prev { left: 10px; top: 50%; margin-top: -21px; } .lb-next { right: 10px; top: 50%; margin-top: -21px; }
+  .lb-cap { position: absolute; bottom: 10px; left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; padding: 0 60px; }
   .text { padding: 10px 12px; overflow: auto; white-space: pre-wrap; flex: 1; }
   .empty { color: var(--muted); font-style: italic; }
   .tbl { overflow: auto; flex: 1; }
@@ -70,7 +91,9 @@
   .msg { padding: 24px; text-align: center; color: var(--muted); }
   @media (max-width: 700px) {
     .main { grid-template-columns: 1fr; overflow: auto; }
-    .right { grid-template-rows: auto auto; }
+    .right { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+    .right > .panel:nth-child(1), .right > .panel:nth-child(2), .right > .photos { grid-column: 1; grid-row: auto; }
+    .photos { min-height: 110px; }
     .text { min-height: 90px; }
     .bar { flex-wrap: wrap; }
   }
@@ -86,7 +109,7 @@
     <label class="chk" title="Cochée : affiche toutes les lignes. Décochée : masque les lignes déjà saisies."><input type="checkbox" id="saisie"> Saisies</label>
   </div>
 
-  <input type="search" class="search" id="q" placeholder="Rechercher..." aria-label="Rechercher">
+  <input type="search" class="search" id="q" placeholder="Remplacer..." aria-label="Rechercher">
   <div class="msg" id="warn" hidden style="padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel)"></div>
   <div class="main">
     <section class="panel">
@@ -101,8 +124,17 @@
     <div class="right">
       <section class="panel"><h2>Description des faits</h2><div class="text" id="desc"></div></section>
       <section class="panel"><h2>Proposition d’amélioration</h2><div class="text" id="prop"></div></section>
+      <section class="panel photos"><h2>Photos</h2><div class="thumbs" id="thumbs"></div></section>
     </div>
   </div>
+
+<div class="lb" id="lb" hidden role="dialog" aria-modal="true" aria-label="Photo agrandie">
+  <button class="lb-x" id="lbx" aria-label="Fermer">×</button>
+  <button class="lb-prev" id="lbp" aria-label="Photo précédente">‹</button>
+  <img id="lbimg" alt="">
+  <button class="lb-next" id="lbn" aria-label="Photo suivante">›</button>
+  <div class="lb-cap" id="lbcap"></div>
+</div>
 
 <script>
 // Détection automatique des colonnes d’après leur nom (accents et ponctuation ignorés)
@@ -118,7 +150,7 @@ const FIELDS = [
 ];
 const norm0 = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-let missingFields = [], knownKeys = [], saisieKey = null, labels = {}, rawRecs = [];
+let missingFields = [], knownKeys = [], saisieKey = null, labels = {}, rawRecs = [], attKey = null;
 function normalize(raw) {
   const keys = Object.keys(raw[0] || {}).filter(k => k !== "id" && !k.startsWith("gristHelper_"));
   knownKeys = keys.map(k => labels[k] && labels[k] !== k ? `${k} (${labels[k]})` : k);
@@ -128,10 +160,14 @@ function normalize(raw) {
     if (k) map[f] = k; else missingFields.push(title);
   }
   saisieKey = map.Saisie || null;
+  const used = Object.values(map);
+  const ak = (attKey && keys.includes(attKey)) ? attKey
+           : (keys.find(k => !used.includes(k) && /photo|piece|joint|image|fichier|pj/.test(norm(k))) || null);
   return raw.map(r => {
     const o = { id: r.id };
     for (const f in map) o[f] = r[map[f]];
-    o._hay = norm0(keys.filter(k => k !== saisieKey).map(k => k === map.Date ? fmtDate(r[k]) : txt(r[k])).join(" "));
+    o.Photos = ak ? r[ak] : undefined;
+    o._hay = norm0(keys.filter(k => k !== saisieKey && k !== ak).map(k => k === map.Date ? fmtDate(r[k]) : txt(r[k])).join(" "));
     return o;
   });
 }
@@ -228,10 +264,90 @@ function setText(el, v) {
   el.classList.toggle("empty", !s);
   if (!s) el.textContent = selectedId ? "—" : "Sélectionnez une ligne.";
 }
+// ----- Photos (colonne de type Pièces jointes) -----
+let tokenInfo = null, photoKey = "", photoSeq = 0, lbList = [], lbIndex = 0;
+const metaCache = {}, IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
+async function auth() {
+  if (!tokenInfo || Date.now() > tokenInfo.exp - 30000) {
+    const t = await grist.docApi.getAccessToken({ readOnly: true });
+    tokenInfo = { ...t, exp: Date.now() + (t.ttlMsecs || 60000) };
+  }
+  return tokenInfo;
+}
+async function attUrl(id) { const a = await auth(); return `${a.baseUrl}/attachments/${id}/download?auth=${encodeURIComponent(a.token)}`; }
+async function attMeta(id) {
+  if (!metaCache[id]) {
+    try {
+      const a = await auth();
+      const j = await (await fetch(`${a.baseUrl}/attachments/${id}?auth=${encodeURIComponent(a.token)}`)).json();
+      metaCache[id] = { name: j.fileName || "Fichier " + id, isImg: IMG_EXT.test(j.fileName || "") || /^\.?(png|jpe?g|gif|webp|bmp|svg|avif)$/i.test(j.fileExt || "") };
+    } catch (e) { metaCache[id] = { name: "Fichier " + id, isImg: true }; }
+  }
+  return metaCache[id];
+}
+const attIds = v => Array.isArray(v) ? v.filter(x => typeof x === "number") : [];
+
+async function renderPhotos() {
+  const box = $("thumbs"), r = records.find(x => x.id === selectedId), ids = attIds(r && r.Photos);
+  const key = (selectedId ?? "") + ":" + ids.join(",");
+  if (key === photoKey) return;
+  photoKey = key;
+  const seq = ++photoSeq;
+  box.innerHTML = "";
+  const note = t => { const d = document.createElement("div"); d.className = "empty"; d.textContent = t; box.appendChild(d); };
+  if (!r) return note("Sélectionnez une ligne.");
+  if (!ids.length) return note("Aucune photo.");
+  try {
+    const metas = await Promise.all(ids.map(attMeta)), urls = await Promise.all(ids.map(attUrl));
+    if (seq !== photoSeq) return;
+    const items = ids.map((id, i) => ({ id, url: urls[i], ...metas[i] }));
+    lbList = items.filter(p => p.isImg);
+    for (const p of items) {
+      if (p.isImg) {
+        const b = document.createElement("button");
+        b.type = "button"; b.className = "th"; b.title = p.name;
+        const im = document.createElement("img"); im.src = p.url; im.alt = p.name; im.loading = "lazy";
+        b.appendChild(im);
+        b.onclick = () => openLb(lbList.findIndex(x => x.id === p.id));
+        box.appendChild(b);
+      } else {
+        const a = document.createElement("a");
+        a.className = "th file"; a.href = p.url; a.target = "_blank"; a.rel = "noopener"; a.title = p.name;
+        a.textContent = "📄 " + p.name;
+        box.appendChild(a);
+      }
+    }
+  } catch (e) { if (seq === photoSeq) { box.innerHTML = ""; note("Photos indisponibles."); } }
+}
+
+async function showLb(i) {
+  const n = lbList.length;
+  if (!n) return;
+  lbIndex = (i + n) % n;
+  const p = lbList[lbIndex];
+  $("lbcap").textContent = `${p.name}${n > 1 ? `  (${lbIndex + 1}/${n})` : ""}`;
+  $("lbp").hidden = $("lbn").hidden = n < 2;
+  $("lbimg").alt = p.name;
+  $("lbimg").src = await attUrl(p.id);
+}
+function openLb(i) { $("lb").hidden = false; showLb(i); $("lbx").focus(); }
+function closeLb() { $("lb").hidden = true; $("lbimg").removeAttribute("src"); }
+$("lbx").onclick = closeLb;
+$("lbp").onclick = e => { e.stopPropagation(); showLb(lbIndex - 1); };
+$("lbn").onclick = e => { e.stopPropagation(); showLb(lbIndex + 1); };
+$("lb").onclick = closeLb;
+document.addEventListener("keydown", e => {
+  if ($("lb").hidden) return;
+  if (e.key === "Escape") closeLb();
+  else if (e.key === "ArrowLeft") showLb(lbIndex - 1);
+  else if (e.key === "ArrowRight") showLb(lbIndex + 1);
+});
+
 function renderDetail() {
   const r = records.find(x => x.id === selectedId);
   setText($("desc"), r && r.Description);
   setText($("prop"), r && r.Proposition);
+  renderPhotos();
 }
 
 function checkMapping() {
@@ -262,7 +378,7 @@ grist.onRecords(recs => {
     const tabs = await grist.docApi.fetchTable("_grist_Tables");
     const ref = tabs.id[tabs.tableId.indexOf(tid)];
     const cols = await grist.docApi.fetchTable("_grist_Tables_column");
-    cols.colId.forEach((c, i) => { if (cols.parentId[i] === ref) labels[c] = cols.label[i]; });
+    cols.colId.forEach((c, i) => { if (cols.parentId[i] === ref) { labels[c] = cols.label[i]; if (!attKey && cols.type[i] === "Attachments") attKey = c; } });
     if (rawRecs.length) { records = normalize(rawRecs); render(); }
   } catch (e) { console.warn("Libellés indisponibles", e); }
 })();
