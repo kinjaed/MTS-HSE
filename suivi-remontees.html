@@ -154,7 +154,7 @@ const FIELDS = [
   ["RI",            "RI",                       k => k === "ri"],
   ["Collaborateur", "Collaborateur",            k => k.startsWith("collab")],
   ["Lieu",          "Lieu - Chantier",          k => k.includes("lieu") || k.includes("chantier")],
-  ["Date",          "Date de l’évènement",      k => k.startsWith("date")],
+  ["Date",          "Date de l’évènement",      k => k.includes("evenement")],
   ["Description",   "Description des faits",    k => k.startsWith("descr")],
   ["Proposition",   "Proposition d’amélioration", k => k.startsWith("propos")],
   ["Saisie",        "Saisie",                   k => k.startsWith("saisi")]
@@ -169,6 +169,10 @@ function normalize(raw) {
   for (const [f, title, test] of FIELDS) {
     const k = keys.find(k => !Object.values(map).includes(k) && (test(norm(k)) || (labels[k] && test(norm(labels[k])))));
     if (k) map[f] = k; else missingFields.push(title);
+  }
+  if (!map.Date) { // repli : première colonne « date… » qui n’est pas une date de création
+    const k = keys.find(k => !Object.values(map).includes(k) && norm(k).startsWith("date") && !/creation|cree|modif|maj/.test(norm(k)));
+    if (k) { map.Date = k; missingFields = missingFields.filter(t => t !== "Date de l’évènement"); }
   }
   saisieKey = map.Saisie || null;
   typeKey = map.Type || null;
