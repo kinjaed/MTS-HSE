@@ -77,11 +77,13 @@
   tbody tr.sel { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
   table { table-layout: fixed; }
   th.c-date, td.date { width: 106px; white-space: nowrap; }
-  th.c-collab { width: calc((100% - 214px) / 2 - 24px); }
-  th.c-ri, td.ri { width: 44px; text-align: center; font-weight: 600; }
+  th.c-collab { width: calc((100% - 228px) / 2 - 24px); }
+  th.c-ri, td.ri { width: 58px; text-align: center; font-weight: 600; }
   th.c-sw, td.sw { width: 64px; text-align: center; }
   td { overflow: hidden; text-overflow: ellipsis; }
   th, td { padding: 8px 8px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.6;
+          background: var(--head); color: var(--ink); }
   .search { width: 100%; padding: 8px 12px; font: inherit; color: var(--ink); background: var(--mint);
             border: 1px solid var(--line); border-radius: 8px; }
   .search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
@@ -156,7 +158,7 @@ const FIELDS = [
 ];
 const norm0 = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const norm = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-let missingFields = [], knownKeys = [], saisieKey = null, labels = {}, rawRecs = [], attKey = null;
+let missingFields = [], knownKeys = [], saisieKey = null, typeKey = null, wopts = {}, labels = {}, rawRecs = [], attKey = null;
 function normalize(raw) {
   const keys = Object.keys(raw[0] || {}).filter(k => k !== "id" && !k.startsWith("gristHelper_"));
   knownKeys = keys.map(k => labels[k] && labels[k] !== k ? `${k} (${labels[k]})` : k);
@@ -166,6 +168,7 @@ function normalize(raw) {
     if (k) map[f] = k; else missingFields.push(title);
   }
   saisieKey = map.Saisie || null;
+  typeKey = map.Type || null;
   const used = Object.values(map);
   const ak = (attKey && keys.includes(attKey)) ? attKey
            : (keys.find(k => !used.includes(k) && /photo|piece|joint|image|fichier|pj/.test(norm(k))) || null);
@@ -202,6 +205,17 @@ function fmtDate(v) {
   return txt(v);
 }
 const isTrue = v => v === true || v === 1 || v === "true";
+
+// Couleurs des choix de la colonne Type (fillColor / textColor définis dans Grist)
+let choiceCache = null;
+function typeStyle(value) {
+  if (!choiceCache || choiceCache.key !== typeKey + wopts[typeKey]) {
+    let o = {};
+    try { o = (JSON.parse(wopts[typeKey] || "{}").choiceOptions) || {}; } catch (e) {}
+    choiceCache = { key: typeKey + wopts[typeKey], o };
+  }
+  return choiceCache.o[txt(value)] || {};
+}
 
 function types() {
   return [...new Set(records.map(r => txt(r.Type)).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
@@ -242,7 +256,14 @@ function renderRows() {
     tr.className = r.id === selectedId ? "sel" : "";
     tr.innerHTML = `<td class="date"></td><td class="ri"></td><td></td><td></td><td class="sw"><label><input type="checkbox" aria-label="Saisie"><span class="knob"></span></label></td>`;
     tr.children[0].textContent = fmtDate(r.Date);
-    tr.children[1].textContent = txt(r.RI);
+    const ri = txt(r.RI);
+    if (ri) {
+      const pill = document.createElement("span"), st = typeStyle(r.Type);
+      pill.className = "pill"; pill.textContent = ri;
+      if (st.fillColor) pill.style.background = st.fillColor;
+      if (st.textColor) pill.style.color = st.textColor;
+      tr.children[1].appendChild(pill);
+    }
     tr.children[2].textContent = txt(r.Collaborateur);
     tr.children[3].textContent = txt(r.Lieu);
     const cb = tr.querySelector("input");
@@ -399,7 +420,7 @@ grist.onRecords(recs => {
     const tabs = await grist.docApi.fetchTable("_grist_Tables");
     const ref = tabs.id[tabs.tableId.indexOf(tid)];
     const cols = await grist.docApi.fetchTable("_grist_Tables_column");
-    cols.colId.forEach((c, i) => { if (cols.parentId[i] === ref) { labels[c] = cols.label[i]; if (!attKey && cols.type[i] === "Attachments") attKey = c; } });
+    cols.colId.forEach((c, i) => { if (cols.parentId[i] === ref) { labels[c] = cols.label[i]; wopts[c] = cols.widgetOptions[i]; if (!attKey && cols.type[i] === "Attachments") attKey = c; } });
     if (rawRecs.length) { records = normalize(rawRecs); render(); }
   } catch (e) { console.warn("Libellés indisponibles", e); }
 })();
