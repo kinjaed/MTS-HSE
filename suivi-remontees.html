@@ -82,6 +82,9 @@
   th.c-sw, td.sw { width: 64px; text-align: center; }
   td { overflow: hidden; text-overflow: ellipsis; }
   th, td { padding: 8px 8px; }
+  .sortbtn { border: 0; background: none; padding: 0; font: inherit; font-weight: inherit; color: inherit; cursor: pointer; }
+  .sortbtn:hover { color: var(--accent); }
+  .sortbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.6;
           background: var(--head); color: var(--ink); }
   .search { width: 100%; padding: 8px 12px; font: inherit; color: var(--ink); background: var(--mint);
@@ -122,7 +125,7 @@
     <section class="panel">
       <div class="tbl">
         <table>
-          <thead><tr><th class="c-date">Date</th><th class="c-ri">RI</th><th class="c-collab">Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
+          <thead><tr><th class="c-date" id="thdate" aria-sort="descending"><button type="button" class="sortbtn" id="sortdate" title="Inverser l’ordre de tri">Date <span id="arrow">▼</span></button></th><th class="c-ri">RI</th><th class="c-collab">Collaborateur</th><th>Lieu - Chantier</th><th class="c-sw">Saisie</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
         <div class="msg" id="msg" hidden></div>
@@ -242,10 +245,27 @@ function moveThumb() {
   b.scrollIntoView({ inline: "nearest", block: "nearest" });
 }
 
+let sortDir = -1; // -1 = du plus récent au plus ancien
+const dateVal = v => typeof v === "number" ? v : (typeof v === "string" && !isNaN(Date.parse(v)) ? Date.parse(v) / 1000 : null);
+$("sortdate").onclick = () => {
+  sortDir = -sortDir;
+  $("arrow").textContent = sortDir < 0 ? "▼" : "▲";
+  $("thdate").setAttribute("aria-sort", sortDir < 0 ? "descending" : "ascending");
+  renderRows();
+};
+
 function visible() {
   const showAll = $("saisie").checked;
   const terms = norm0($("q").value.trim()).split(/\s+/).filter(Boolean);
-  return records.filter(r => terms.every(t => r._hay.includes(t)) && (filter === "__ALL__" || txt(r.Type) === filter) && (showAll || !isTrue(r.Saisie)));
+  return records
+    .filter(r => terms.every(t => r._hay.includes(t)) && (filter === "__ALL__" || txt(r.Type) === filter) && (showAll || !isTrue(r.Saisie)))
+    .sort((a, b) => {
+      const x = dateVal(a.Date), y = dateVal(b.Date);
+      if (x === null && y === null) return b.id - a.id;
+      if (x === null) return 1;   // sans date : toujours en bas
+      if (y === null) return -1;
+      return x === y ? (b.id - a.id) * sortDir : (x - y) * sortDir;
+    });
 }
 
 function renderRows() {
