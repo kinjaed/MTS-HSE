@@ -250,7 +250,18 @@ function moveThumb() {
 }
 
 let sortDir = -1; // -1 = du plus récent au plus ancien
-const dateVal = v => typeof v === "number" ? v : (typeof v === "string" && !isNaN(Date.parse(v)) ? Date.parse(v) / 1000 : null);
+function dateVal(v) { // valeur de tri (secondes) pour tous les formats de date possibles
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v;
+  if (v instanceof Date) return v.getTime() / 1000;
+  if (Array.isArray(v)) return (v[0] === "D" || v[0] === "d") ? dateVal(v[1]) : null;
+  if (typeof v === "string") {
+    const m = v.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    const t = m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) : Date.parse(v);
+    return isNaN(t) ? null : t / 1000;
+  }
+  return null;
+}
 $("sortdate").onclick = () => {
   sortDir = -sortDir;
   $("arrow").textContent = sortDir < 0 ? "▼" : "▲";
@@ -265,7 +276,7 @@ function visible() {
     .filter(r => terms.every(t => r._hay.includes(t)) && (filter === "__ALL__" || txt(r.Type) === filter) && (showAll || !isTrue(r.Saisie)))
     .sort((a, b) => {
       const x = dateVal(a.Date), y = dateVal(b.Date);
-      if (x === null && y === null) return b.id - a.id;
+      if (x === null && y === null) return (b.id - a.id) * sortDir;
       if (x === null) return 1;   // sans date : toujours en bas
       if (y === null) return -1;
       return x === y ? (b.id - a.id) * sortDir : (x - y) * sortDir;
