@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Matériel</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--tx:#1f2933;--mut:#6b7785;--bd:#d9dee4;--ac:#16a34a;--sel:#e6f4ea}
+  @media (prefers-color-scheme:dark){:root{--bg:#1b1f24;--card:#252b32;--tx:#e6e9ec;--mut:#9aa5b1;--bd:#3a424b;--ac:#34c768;--sel:#1f3a2a}}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font:13px system-ui,sans-serif;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;padding:8px;gap:8px}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .bar b{font-size:12px;letter-spacing:.05em;color:var(--mut)}
+  .pills{display:flex;gap:4px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:3px}
+  .pill{border:0;background:none;color:var(--tx);padding:4px 12px;border-radius:16px;cursor:pointer;font:inherit}
+  .pill.on{background:var(--ac);color:#fff}
+  .sw{margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  .sw input{display:none}
+  .sw i{width:34px;height:18px;border-radius:9px;background:var(--bd);position:relative;transition:.15s}
+  .sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
+  .sw input:checked+i{background:var(--ac)}
+  .sw input:checked+i::after{left:18px}
+  .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,1fr) minmax(300px,2fr) minmax(180px,.8fr);gap:8px}
+  .panel{background:var(--card);border:1px solid var(--bd);border-radius:6px;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:100%}
+  th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11px;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+  td{padding:5px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+  td.n,th.n{text-align:center}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:var(--bg)}
+  tr.sel{background:var(--sel)!important}
+  .ok{color:var(--ac);font-weight:700}
+  .zero{color:var(--mut)}
+  .side{padding:10px;display:flex;flex-direction:column;gap:10px}
+  .side label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
+  .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg)}
+  .side hr{border:0;border-top:1px solid var(--bd);width:100%;margin:2px 0}
+  .empty{padding:16px;color:var(--mut);text-align:center}
+  @media (max-width:800px){.main{grid-template-columns:1fr;overflow:auto}}
+</style>
+</head>
+<body>
+<div class="bar">
+  <b>CATÉGORIE</b>
+  <div class="pills" id="pills"></div>
+  <label class="sw"><input type="checkbox" id="dispo"><i></i>Dispo uniquement</label>
+</div>
+<div class="main">
+  <div class="panel"><table><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
+  <div class="panel"><table><thead><tr><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th><th class="n">Libre</th></tr></thead><tbody id="mats"></tbody></table></div>
+  <div class="panel side" id="side"></div>
+</div>
+
+<script>
+// ---- Détection tolérante des noms de colonnes (accents => "_" dans les IDs Grist) ----
+const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const M = { // table Materiel
+  des:/^de?signation$/, cat:/^cate?gorie$/, num:/^n$/, marque:/^marque$/, serie:/^nse?rie$/, etat:/^e?tat$/,
+  user:/^utilisateur$/, chantier:/^chantier$/, libre:/^libre$/, mes:/^miseenservice$/,
+  dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^datemiseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/
+};
+const T = { des:/^de?signation$/, cat:/^cate?gorie$/, catTxt:/^cat.*(txt|text|nom)$/, total:/^enservice$/, dispo:/^dispo$/ };
+
+const pick = (keys, re) => keys.find(k => re.test(norm(k)));
+const mapCols = (keys, defs) => Object.fromEntries(Object.entries(defs).map(([n,re]) => [n, pick(keys, re)]));
+
+// colonnes -> tableau de lignes
+const rows = t => { const ks = Object.keys(t); return (t.id||[]).map((_,i)=>Object.fromEntries(ks.map(k=>[k,t[k][i]]))); };
+
+let state = { mats:[], types:[], cat:'TOUS', type:null, mat:null, dispoOnly:false };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const truthy = v => v === true || v === 'true' || v === 1;
+
+async function load(rawRecords) {
+  try {
+    const [rend, typeTbl] = await Promise.all([
+      grist.fetchSelectedTable({format:'rendered', includeColumns:'normal'}),
+      grist.docApi.fetchTable('Type_materiel')
+    ]);
+    const rr = rows(rend), byId = new Map(rr.map(r=>[r.id,r]));
+    const mc = mapCols(Object.keys(rend), M);
+    const raw = rawRecords || rows(await grist.fetchSelectedTable({includeColumns:'normal'}));
+    state.mats = raw.map(r => {
+      const d = byId.get(r.id) || {}, g = k => mc[k] ? d[mc[k]] : '';
+      return { id:r.id, desId: mc.des ? r[mc.des] : null, des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'),
+        serie:g('serie'), etat:g('etat'), user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'),
+        dmd:g('dmd'), dr:g('dr'), du:g('du'), libre: mc.libre ? truthy(r[mc.libre]) : false };
+    });
+    // Types
+    const tc = mapCols(Object.keys(typeTbl), T);
+    const catByType = new Map(); // repli : catégorie déduite des matériels
+    state.mats.forEach(m => { if (m.desId != null && m.cat) catByType.set(m.desId, m.cat); });
+    state.types = rows(typeTbl).map(r => ({
+      id:r.id, des:r[tc.des] ?? '',
+      cat: String((tc.catTxt && r[tc.catTxt]) || catByType.get(r.id) || (tc.cat && typeof r[tc.cat] === 'string' ? r[tc.cat] : '') || '—'),
+      total: tc.total ? r[tc.total] : state.mats.filter(m=>m.desId===r.id).length,
+      dispo: tc.dispo ? r[tc.dispo] : state.mats.filter(m=>m.desId===r.id && m.libre).length
+    }));
+    render();
+  } catch(e) { $('types').innerHTML = `<tr><td colspan=3 class="empty">Erreur : ${esc(e.message)}</td></tr>`; }
+}
+
+function render() {
+  const cats = ['TOUS', ...[...new Set(state.types.map(t=>t.cat))].sort()];
+  if (!cats.includes(state.cat)) state.cat = 'TOUS';
+  $('pills').innerHTML = cats.map(c=>`<button class="pill ${c===state.cat?'on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+
+  const types = state.types.filter(t => (state.cat==='TOUS'||t.cat===state.cat) && (!state.dispoOnly || t.dispo>0));
+  if (state.type && !types.some(t=>t.id===state.type)) state.type = null;
+  $('types').innerHTML = types.map(t=>`<tr data-id="${t.id}" class="${t.id===state.type?'sel':''}">
+    <td>${esc(t.des)}</td><td class="n">${esc(t.total)}</td><td class="n ${t.dispo>0?'ok':'zero'}">${esc(t.dispo)}</td></tr>`).join('')
+    || '<tr><td colspan=3 class="empty">Aucun type</td></tr>';
+
+  const visibleTypeIds = new Set(types.map(t=>t.id));
+  const mats = state.mats.filter(m => (state.type ? m.desId===state.type : visibleTypeIds.has(m.desId)) && (!state.dispoOnly || m.libre));
+  if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
+  $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''}">
+    <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${esc(m.etat)}</td>
+    <td>${esc(m.user)}</td><td>${esc(m.chantier)}</td><td class="n">${m.libre?'<span class="ok">✔</span>':''}</td></tr>`).join('')
+    || '<tr><td colspan=7 class="empty">Aucun matériel</td></tr>';
+
+  const m = state.mats.find(x=>x.id===state.mat);
+  const f = (l,v)=>`<div><label>${l}</label><div class="v">${esc(v)}</div></div>`;
+  $('side').innerHTML = m
+    ? f('Date mise à dispo',m.dmd)+f('Date retour',m.dr)+f('Dernier utilisateur',m.du)+'<hr>'+f('Dernier contrôle',m.dc)+f('Prochain contrôle',m.pc)+f('Mise en service',m.mes)
+    : '<div class="empty">Sélectionnez un matériel</div>';
+}
+
+document.addEventListener('click', e => {
+  const pill = e.target.closest('.pill'), tr = e.target.closest('tbody tr[data-id]');
+  if (pill) { state.cat = pill.dataset.c; state.type = null; render(); }
+  else if (tr) {
+    const id = Number(tr.dataset.id);
+    if (tr.parentElement.id === 'types') state.type = state.type===id ? null : id;
+    else { state.mat = id; try { grist.setCursorPos({rowId:id}); } catch(_){} }
+    render();
+  }
+});
+$('dispo').addEventListener('change', e => { state.dispoOnly = e.target.checked; render(); });
+
+grist.ready({ requiredAccess:'full' });
+grist.onRecords(recs => load(recs));
+</script>
+</body>
+</html>
