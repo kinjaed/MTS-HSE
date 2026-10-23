@@ -6,74 +6,98 @@
 <title>Matériel</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
-  :root{--bg:#f6f7f9;--card:#fff;--tx:#1f2933;--mut:#6b7785;--bd:#d9dee4;--ac:#16a34a;--sel:#e6f4ea}
-  @media (prefers-color-scheme:dark){:root{--bg:#1b1f24;--card:#252b32;--tx:#e6e9ec;--mut:#9aa5b1;--bd:#3a424b;--ac:#34c768;--sel:#1f3a2a}}
+  :root{--bg:#f6f7f9;--card:#fff;--tx:#1f2933;--mut:#6b7785;--bd:#d9dee4;--ac:#2563eb;--ok:#16a34a;--sel:#e0ebff}
+  @media (prefers-color-scheme:dark){:root{--bg:#1b1f24;--card:#252b32;--tx:#e6e9ec;--mut:#9aa5b1;--bd:#3a424b;--ac:#3b82f6;--ok:#34c768;--sel:#1e3358}}
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{font:13px system-ui,sans-serif;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;padding:8px;gap:8px}
-  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .bar{display:flex;align-items:center;gap:12px}
   .bar b{font-size:12px;letter-spacing:.05em;color:var(--mut)}
-  .pills{display:flex;gap:4px;flex-wrap:wrap;background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:3px}
-  .pill{border:0;background:none;color:var(--tx);padding:4px 12px;border-radius:16px;cursor:pointer;font:inherit}
-  .pill.on{background:var(--ac);color:#fff}
-  .sw{margin-left:auto;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  /* Catégories : défilant + curseur glissant bleu */
+  .pills{position:relative;display:flex;flex:1;min-width:0;gap:2px;overflow-x:auto;scrollbar-width:none;background:var(--card);border:1px solid var(--bd);border-radius:20px;padding:3px}
+  .pills::-webkit-scrollbar{display:none}
+  .slider{position:absolute;top:3px;bottom:3px;left:0;width:0;border-radius:16px;background:var(--ac);transition:transform .25s ease,width .25s ease,opacity .2s;z-index:0;pointer-events:none}
+  .pill{position:relative;z-index:1;flex:0 0 auto;border:0;background:none;color:var(--tx);padding:4px 12px;border-radius:16px;cursor:pointer;font:inherit;white-space:nowrap;transition:color .25s}
+  .pill.on{color:#fff}
+  /* Recherche */
+  .search{width:200px;border:1px solid #b7dfc0;background:#e8f6ec;color:#1f2933;border-radius:16px;padding:5px 12px;font:inherit;outline:none}
+  .search:focus{border-color:#6fbf85;box-shadow:0 0 0 2px #cdeed6}
+  .search::placeholder{color:#6b8f74}
+  .sw{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;white-space:nowrap}
   .sw input{display:none}
   .sw i{width:34px;height:18px;border-radius:9px;background:var(--bd);position:relative;transition:.15s}
   .sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
   .sw input:checked+i{background:var(--ac)}
   .sw input:checked+i::after{left:18px}
-  .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(220px,1fr) minmax(300px,2fr) minmax(180px,.8fr);gap:8px}
+  /* Disposition : gauche réduit de moitié, droite réduite de moitié */
+  .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,.55fr) minmax(300px,2fr) minmax(120px,.4fr);gap:8px}
   .panel{background:var(--card);border:1px solid var(--bd);border-radius:6px;overflow:auto;min-height:0}
   table{border-collapse:collapse;width:100%}
-  th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11px;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
+  #left{table-layout:fixed}
+  #left th.n{width:50px}
+  #left td:first-child{overflow:hidden;text-overflow:ellipsis}
+  th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11px;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;z-index:2}
   td{padding:5px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
   td.n,th.n{text-align:center}
   tbody tr{cursor:pointer}
   tbody tr:hover{background:var(--bg)}
   tr.sel{background:var(--sel)!important}
-  .ok{color:var(--ac);font-weight:700}
+  tr.free td{font-weight:700}
+  .ok{color:var(--ok);font-weight:700}
   .zero{color:var(--mut)}
+  .badge{display:inline-block;padding:1px 8px;border-radius:3px;font-weight:600;background:#e8e8e8;color:#222}
   .side{padding:10px;display:flex;flex-direction:column;gap:10px}
   .side label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
-  .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg)}
+  .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg);overflow-wrap:anywhere}
   .side hr{border:0;border-top:1px solid var(--bd);width:100%;margin:2px 0}
-  .empty{padding:16px;color:var(--mut);text-align:center}
+  .empty{padding:16px;color:var(--mut);text-align:center;white-space:normal}
   @media (max-width:800px){.main{grid-template-columns:1fr;overflow:auto}}
 </style>
 </head>
 <body>
 <div class="bar">
   <b>CATÉGORIE</b>
-  <div class="pills" id="pills"></div>
+  <div class="pills" id="pills"><div class="slider" id="slider"></div></div>
+  <input class="search" id="q" type="search" placeholder="Rechercher…">
   <label class="sw"><input type="checkbox" id="dispo"><i></i>Dispo uniquement</label>
 </div>
 <div class="main">
-  <div class="panel"><table><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
-  <div class="panel"><table><thead><tr><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th><th class="n">Libre</th></tr></thead><tbody id="mats"></tbody></table></div>
+  <div class="panel"><table id="left"><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
+  <div class="panel"><table><thead><tr><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th></tr></thead><tbody id="mats"></tbody></table></div>
   <div class="panel side" id="side"></div>
 </div>
 
 <script>
-// ---- Détection tolérante des noms de colonnes (accents => "_" dans les IDs Grist) ----
-const norm = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
-const M = { // table Materiel
+// ---- Détection tolérante des noms de colonnes ----
+const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
+const M = {
   des:/^de?signation$/, cat:/^cate?gorie$/, num:/^n$/, marque:/^marque$/, serie:/^nse?rie$/, etat:/^e?tat$/,
   user:/^utilisateur$/, chantier:/^chantier$/, libre:/^libre$/, mes:/^miseenservice$/,
   dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^datemiseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/
 };
 const T = { des:/^de?signation$/, cat:/^cate?gorie$/, catTxt:/^cat.*(txt|text|nom)$/, total:/^enservice$/, dispo:/^dispo$/ };
-
 const pick = (keys, re) => keys.find(k => re.test(norm(k)));
 const mapCols = (keys, defs) => Object.fromEntries(Object.entries(defs).map(([n,re]) => [n, pick(keys, re)]));
-
-// colonnes -> tableau de lignes
 const rows = t => { const ks = Object.keys(t); return (t.id||[]).map((_,i)=>Object.fromEntries(ks.map(k=>[k,t[k][i]]))); };
 
-let state = { mats:[], types:[], cat:'TOUS', type:null, mat:null, dispoOnly:false };
+let state = { mats:[], types:[], cat:'TOUS', type:null, mat:null, dispoOnly:false, q:'', etatColors:{} };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const sameType = (m,t) => (m.desId != null && m.desId === t.id) || (m.des && norm(m.des) === norm(t.des));
 const truthy = v => v === true || v === 'true' || v === 1;
+const sameType = (m,t) => (m.desId != null && m.desId === t.id) || (m.des && norm(m.des) === norm(t.des));
+
+// Couleurs du champ à choix unique (colonne État), lues dans les métadonnées Grist
+async function loadEtatColors(etatCol) {
+  try {
+    if (!etatCol) return {};
+    const tid = await grist.selectedTable.getTableId();
+    const tabs = rows(await grist.docApi.fetchTable('_grist_Tables'));
+    const ref = (tabs.find(t => t.tableId === tid) || {}).id;
+    const col = rows(await grist.docApi.fetchTable('_grist_Tables_column')).find(c => c.parentId === ref && c.colId === etatCol);
+    const opts = JSON.parse((col && col.widgetOptions) || '{}');
+    return opts.choiceOptions || {};
+  } catch(e) { return {}; }
+}
 
 async function load(rawRecords) {
   try {
@@ -83,16 +107,19 @@ async function load(rawRecords) {
     ]);
     const rr = rows(rend), byId = new Map(rr.map(r=>[r.id,r]));
     const mc = mapCols(Object.keys(rend), M);
+    state.etatColors = await loadEtatColors(mc.etat);
     const raw = rawRecords || rows(await grist.fetchSelectedTable({includeColumns:'normal'}));
     state.mats = raw.map(r => {
       const d = byId.get(r.id) || {}, g = k => mc[k] ? d[mc[k]] : '';
-      return { id:r.id, desId: mc.des && !isNaN(Number(r[mc.des])) && r[mc.des] !== '' && r[mc.des] !== null ? Number(r[mc.des]) : null, des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'),
-        serie:g('serie'), etat:g('etat'), user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'),
-        dmd:g('dmd'), dr:g('dr'), du:g('du'), libre: mc.libre ? truthy(r[mc.libre]) : false };
+      const n = mc.des ? Number(r[mc.des]) : NaN;
+      return { id:r.id, desId: (mc.des && r[mc.des] !== null && r[mc.des] !== '' && !isNaN(n)) ? n : null,
+        des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'), serie:g('serie'), etat:g('etat'),
+        user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'), dmd:g('dmd'), dr:g('dr'), du:g('du'),
+        libre: mc.libre ? truthy(r[mc.libre]) : false,
+        all: norm(Object.entries(d).filter(([k])=>k!=='id').map(([,v])=>v).join(' ')) };
     });
-    // Types
     const tc = mapCols(Object.keys(typeTbl), T);
-    const catByType = new Map(); // repli : catégorie déduite des matériels
+    const catByType = new Map();
     state.mats.forEach(m => { if (m.desId != null && m.cat) catByType.set(m.desId, m.cat); });
     state.types = rows(typeTbl).map(r => ({
       id:r.id, des:r[tc.des] ?? '',
@@ -104,24 +131,55 @@ async function load(rawRecords) {
   } catch(e) { $('types').innerHTML = `<tr><td colspan=3 class="empty">Erreur : ${esc(e.message)}</td></tr>`; }
 }
 
+function badge(v) {
+  if (!v) return '';
+  const o = state.etatColors[v] || {};
+  const st = (o.fillColor ? `background:${esc(o.fillColor)};` : '') + (o.textColor ? `color:${esc(o.textColor)};` : '');
+  return `<span class="badge" style="${st}">${esc(v)}</span>`;
+}
+
+let pillSig = '';
+function moveSlider() {
+  const on = $('pills').querySelector('.pill.on'), s = $('slider');
+  if (!on) { s.style.opacity = 0; return; }
+  s.style.opacity = 1;
+  s.style.width = on.offsetWidth + 'px';
+  s.style.transform = `translateX(${on.offsetLeft}px)`;
+  on.scrollIntoView({inline:'nearest', block:'nearest', behavior:'smooth'});
+}
+
 function render() {
   const cats = ['TOUS', ...[...new Set(state.types.map(t=>t.cat))].sort()];
   if (!cats.includes(state.cat)) state.cat = 'TOUS';
-  $('pills').innerHTML = cats.map(c=>`<button class="pill ${c===state.cat?'on':''}" data-c="${esc(c)}">${esc(c)}</button>`).join('');
+  const sig = cats.join('|');
+  if (sig !== pillSig) {
+    pillSig = sig;
+    [...$('pills').querySelectorAll('.pill')].forEach(b=>b.remove());
+    $('pills').insertAdjacentHTML('beforeend', cats.map(c=>`<button class="pill" data-c="${esc(c)}">${esc(c)}</button>`).join(''));
+  }
+  [...$('pills').querySelectorAll('.pill')].forEach(b => b.classList.toggle('on', b.dataset.c === state.cat));
+  requestAnimationFrame(moveSlider);
 
-  const types = state.types.filter(t => (state.cat==='TOUS'||t.cat===state.cat) && (!state.dispoOnly || t.dispo>0));
+  const q = norm(state.q);
+  const hit = m => m.all.includes(q);
+  const types = state.types
+    .filter(t => state.cat==='TOUS' || t.cat===state.cat)
+    .filter(t => !state.dispoOnly || t.dispo>0)
+    .filter(t => !q || state.mats.some(m => sameType(m,t) && hit(m)));
   if (state.type && !types.some(t=>t.id===state.type)) state.type = null;
   $('types').innerHTML = types.map(t=>`<tr data-id="${t.id}" class="${t.id===state.type?'sel':''}">
-    <td>${esc(t.des)}</td><td class="n">${esc(t.total)}</td><td class="n ${t.dispo>0?'ok':'zero'}">${esc(t.dispo)}</td></tr>`).join('')
+    <td title="${esc(t.des)}">${esc(t.des)}</td><td class="n">${esc(t.total)}</td><td class="n ${t.dispo>0?'ok':'zero'}">${esc(t.dispo)}</td></tr>`).join('')
     || '<tr><td colspan=3 class="empty">Aucun type</td></tr>';
 
   const selType = state.types.find(t=>t.id===state.type);
-  const mats = state.mats.filter(m => (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) && (!state.dispoOnly || m.libre));
+  const mats = state.mats.filter(m =>
+    (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) &&
+    (!state.dispoOnly || m.libre) && (!q || hit(m)));
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
-  $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''}">
-    <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${esc(m.etat)}</td>
-    <td>${esc(m.user)}</td><td>${esc(m.chantier)}</td><td class="n">${m.libre?'<span class="ok">✔</span>':''}</td></tr>`).join('')
-    || '<tr><td colspan=7 class="empty">Aucun matériel</td></tr>';
+  $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''} ${m.libre?'free':''}">
+    <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${badge(m.etat)}</td>
+    <td>${esc(m.user)}</td><td>${esc(m.chantier)}</td></tr>`).join('')
+    || '<tr><td colspan=6 class="empty">Aucun matériel</td></tr>';
 
   const m = state.mats.find(x=>x.id===state.mat);
   const f = (l,v)=>`<div><label>${l}</label><div class="v">${esc(v)}</div></div>`;
@@ -141,6 +199,9 @@ document.addEventListener('click', e => {
   }
 });
 $('dispo').addEventListener('change', e => { state.dispoOnly = e.target.checked; render(); });
+$('q').addEventListener('input', e => { state.q = e.target.value; render(); });
+$('pills').addEventListener('wheel', e => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) { e.preventDefault(); $('pills').scrollLeft += e.deltaY; } }, {passive:false});
+window.addEventListener('resize', moveSlider);
 
 grist.ready({ requiredAccess:'full' });
 grist.onRecords(recs => load(recs));
