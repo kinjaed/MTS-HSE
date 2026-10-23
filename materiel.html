@@ -72,6 +72,7 @@ const rows = t => { const ks = Object.keys(t); return (t.id||[]).map((_,i)=>Obje
 let state = { mats:[], types:[], cat:'TOUS', type:null, mat:null, dispoOnly:false };
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const sameType = (m,t) => (m.desId != null && m.desId === t.id) || (m.des && norm(m.des) === norm(t.des));
 const truthy = v => v === true || v === 'true' || v === 1;
 
 async function load(rawRecords) {
@@ -85,7 +86,7 @@ async function load(rawRecords) {
     const raw = rawRecords || rows(await grist.fetchSelectedTable({includeColumns:'normal'}));
     state.mats = raw.map(r => {
       const d = byId.get(r.id) || {}, g = k => mc[k] ? d[mc[k]] : '';
-      return { id:r.id, desId: mc.des ? r[mc.des] : null, des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'),
+      return { id:r.id, desId: mc.des && !isNaN(Number(r[mc.des])) && r[mc.des] !== '' && r[mc.des] !== null ? Number(r[mc.des]) : null, des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'),
         serie:g('serie'), etat:g('etat'), user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'),
         dmd:g('dmd'), dr:g('dr'), du:g('du'), libre: mc.libre ? truthy(r[mc.libre]) : false };
     });
@@ -114,8 +115,8 @@ function render() {
     <td>${esc(t.des)}</td><td class="n">${esc(t.total)}</td><td class="n ${t.dispo>0?'ok':'zero'}">${esc(t.dispo)}</td></tr>`).join('')
     || '<tr><td colspan=3 class="empty">Aucun type</td></tr>';
 
-  const visibleTypeIds = new Set(types.map(t=>t.id));
-  const mats = state.mats.filter(m => (state.type ? m.desId===state.type : visibleTypeIds.has(m.desId)) && (!state.dispoOnly || m.libre));
+  const selType = state.types.find(t=>t.id===state.type);
+  const mats = state.mats.filter(m => (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) && (!state.dispoOnly || m.libre));
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
   $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''}">
     <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${esc(m.etat)}</td>
