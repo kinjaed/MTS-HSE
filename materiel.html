@@ -6,8 +6,8 @@
 <title>Matériel</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <style>
-  :root{--bg:#f6f7f9;--card:#fff;--tx:#1f2933;--mut:#6b7785;--bd:#d9dee4;--ac:#2563eb;--ok:#16a34a;--sel:#e0ebff}
-  @media (prefers-color-scheme:dark){:root{--bg:#1b1f24;--card:#252b32;--tx:#e6e9ec;--mut:#9aa5b1;--bd:#3a424b;--ac:#3b82f6;--ok:#34c768;--sel:#1e3358}}
+  :root{--bg:#f6f7f9;--card:#fff;--tx:#1f2933;--mut:#6b7785;--bd:#d9dee4;--ac:#2563eb;--ok:#16a34a;--sel:#e0ebff;--pb:#e3eefc}
+  @media (prefers-color-scheme:dark){:root{--bg:#1b1f24;--card:#252b32;--tx:#e6e9ec;--mut:#9aa5b1;--bd:#3a424b;--ac:#3b82f6;--ok:#34c768;--sel:#1e3358;--pb:#1d2b44}}
   *{box-sizing:border-box}
   html,body{height:100%;margin:0}
   body{font:13px system-ui,sans-serif;background:var(--bg);color:var(--tx);display:flex;flex-direction:column;padding:8px;gap:8px}
@@ -31,12 +31,12 @@
   .sw input:checked+i::after{left:18px}
   /* Disposition : gauche réduit de moitié, droite réduite de moitié */
   .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,.55fr) minmax(300px,2fr) minmax(120px,.4fr);gap:8px}
-  .panel{background:var(--card);border:1px solid var(--bd);border-radius:6px;overflow:auto;min-height:0}
+  .panel{background:var(--card);border:2px solid var(--bd);border-radius:6px;overflow:auto;min-height:0}
   table{border-collapse:collapse;width:100%}
   #left{table-layout:fixed}
   #left th.n{width:50px}
   #left td:first-child{overflow:hidden;text-overflow:ellipsis}
-  th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11px;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;z-index:2}
+  th{position:sticky;top:0;background:var(--pb);text-align:left;font-size:11px;color:var(--mut);padding:6px 8px;border-bottom:1px solid var(--bd);white-space:nowrap;z-index:2}
   td{padding:5px 8px;border-bottom:1px solid var(--bd);white-space:nowrap}
   td.n,th.n{text-align:center}
   tbody tr{cursor:pointer}
@@ -53,7 +53,7 @@
   .empty{padding:16px;color:var(--mut);text-align:center;white-space:normal}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:10;padding:8px}
   .modal.open{display:flex}
-  .dlg{background:var(--card);border:1px solid var(--bd);border-radius:8px;width:min(440px,100%);max-height:100%;overflow:auto;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+  .dlg{background:var(--pb);border:1px solid var(--bd);border-radius:8px;width:min(440px,100%);max-height:100%;overflow:auto;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.3)}
   .dlg h3{margin:0 0 12px;font-size:15px}
   .dlg .f{margin-bottom:10px}
   .dlg .f label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
@@ -72,7 +72,16 @@
   .hd h3{margin:0}
   .dlg .pen{padding:2px 8px;font-size:15px;line-height:1.2;border-radius:6px}
   .dlg .pen.on{background:var(--ac);border-color:var(--ac);color:#fff}
-  .aff{margin-top:4px}
+  .dlg .row2{display:flex;gap:8px}
+  .dlg .row2 .f{flex:1;min-width:0}
+  .edit-row{display:none;gap:6px}
+  .aff-on .edit-row{display:flex}
+  .aff-on .ro-u,.aff-on .ro-c{display:none}
+  .edit-row select{flex:1;min-width:0}
+  .dlg .plus{padding:4px 12px;font-weight:700}
+  .aff{display:flex;gap:8px;margin-top:4px}
+  .affok-btn{display:none}
+  .aff-on .affok-btn{display:inline-block}
   .aff .row2{display:flex;gap:8px;margin-top:10px}
   .aff .row2 .f{flex:1;margin:0}
   .ret{display:flex;align-items:flex-end;gap:8px;margin-top:12px}
@@ -141,11 +150,13 @@ async function loadLists() {
     try {
       const t = await grist.docApi.fetchTable(table), ks = Object.keys(t);
       const c = pick(ks, re), a = pick(ks, /^actif$/);
-      return rows(t).filter(r => a ? truthy(r[a]) : true).map(r => ({id:r.id, name:String(r[c] ?? '')})).filter(x=>x.name)
+      const list = rows(t).filter(r => a ? truthy(r[a]) : true).map(r => ({id:r.id, name:String(r[c] ?? '')})).filter(x=>x.name)
         .sort((x,y)=>coll.compare(x.name,y.name));
-    } catch(e) { return []; }
+      return {list, c, a};
+    } catch(e) { return {list:[], c:null, a:null}; }
   };
-  [state.users, state.chantiers] = await Promise.all([act('Utilisateurs', /^utilisateur$/), act('Chantiers', /^description$/)]);
+  const [u, c] = await Promise.all([act('Utilisateurs', /^utilisateur$/), act('Chantiers', /^description$/)]);
+  state.users = u.list; state.chantiers = c.list; state.uCols = {c:u.c, a:u.a}; state.cCols = {c:c.c, a:c.a};
 }
 
 async function load(rawRecords) {
@@ -271,23 +282,23 @@ function inputFor(k, col, v, m) {
   return `<input type="text" ${base} data-t="Text" value="${esc(v ?? '')}">`;
 }
 
+const optList = a => '<option value=""></option>' + (a || []).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+
 function openEdit(id) {
   const m = state.mats.find(x=>x.id===id); if (!m) return;
   editId = id;
   const mc = state.mc || {};
-  const f = FIELDS.filter(([k])=>mc[k]).map(([k,l]) =>
-    `<div class="f"><label>${l}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>`).join('');
-  const ro = (l,v)=>`<div class="f"><label>${l}</label><div class="ro">${esc(v)}</div></div>`;
+  const fh = k => mc[k] ? `<div class="f"><label>${FIELDS.find(x=>x[0]===k)[1]}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>` : '';
+  const f = fh('des') + fh('num') + `<div class="row2">${fh('marque')}${fh('serie')}</div>` + fh('etat');
   const libre = !m.user && !m.chantier;
-  const opt = a => '<option value=""></option>' + (a || []).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
-  $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${f}<hr>${ro('Utilisateur',m.user)}${ro('Chantier',m.chantier)}
-    ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button>
-      <div id="affpanel" style="display:none"><div class="row2">
-        <div class="f"><label>Utilisateur</label><select id="affu">${opt(state.users)}</select></div>
-        <div class="f"><label>Chantier</label><select id="affc">${opt(state.chantiers)}</select></div></div>
-        <div class="btns"><button type="button" class="pri" id="affok">Valider</button></div></div></div>` : ''}
+  const rof = (l, v, c) => `<div class="f"><label>${l}</label><div class="ro ro-${c}">${esc(v)}</div>` + (libre
+    ? `<div class="edit-row"><select id="aff${c}">${optList(c==='u' ? state.users : state.chantiers)}</select><button type="button" id="plus${c}" class="plus" title="Ajouter">+</button></div>` : '') + '</div>';
+  $('dlg').classList.remove('aff-on');
+  $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${f}<hr>${rof('Utilisateur',m.user,'u')}${rof('Chantier',m.chantier,'c')}
+    ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button><button type="button" class="pri affok-btn" id="affok">Valider</button></div>` : ''}
     ${(m.user || m.chantier) ? `<div class="ret"><div class="f"><label>Date de retour</label><input type="date" id="dret" value="${todayStr()}"></div><button type="button" class="pri" id="retour">Retour</button></div>` : ''}
     <div class="err" id="err"></div>
+    <hr>
     <div class="btns"><button id="cancel">Annuler</button><button class="pri" id="save">Enregistrer</button></div>`;
   $('modal').classList.add('open');
   $('cancel').onclick = closeEdit;
@@ -297,11 +308,42 @@ function openEdit(id) {
     $('dlg').querySelectorAll('[data-lock]').forEach(el => { el.disabled = !el.disabled; });
   };
   if ($('affbtn')) {
-    $('affbtn').onclick = () => { const p = $('affpanel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+    $('affbtn').onclick = () => $('dlg').classList.toggle('aff-on');
     $('affok').onclick = doAffecter;
+    $('plusu').onclick = () => openAdd('u');
+    $('plusc').onclick = () => openAdd('c');
   }
   $('save').onclick = saveEdit;
   const first = $('dlg').querySelector('input,select'); if (first) first.focus();
+}
+
+function openAdd(kind) {
+  const isU = kind === 'u';
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">${isU ? 'Nouvel utilisateur' : 'Nouveau chantier'}</h3>
+    <div class="f"><input type="text" id="newval" placeholder="${isU ? 'Nom de l’utilisateur' : 'Description du chantier'}"></div>
+    <div class="err" id="err2"></div>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Ajouter</button></div>`;
+  $('modal2').classList.add('open');
+  const go = async () => {
+    const v = $('newval').value.trim();
+    if (!v) { $('err2').textContent = 'Saisissez une valeur.'; return; }
+    const cols = isU ? state.uCols : state.cCols;
+    const fields = { [cols.c || (isU ? 'Utilisateur' : 'Description')]: v, [cols.a || 'Actif']: true };
+    try {
+      const res = await grist.getTable(isU ? 'Utilisateurs' : 'Chantiers').create({fields});
+      await loadLists();
+      const keep = [$('affu').value, $('affc').value];
+      $('affu').innerHTML = optList(state.users); $('affc').innerHTML = optList(state.chantiers);
+      $('affu').value = keep[0]; $('affc').value = keep[1];
+      const nid = res && (res.id ?? (Array.isArray(res) ? (res[0] || {}).id : undefined));
+      if (nid != null) $(isU ? 'affu' : 'affc').value = String(nid);
+      $('modal2').classList.remove('open');
+    } catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
+  };
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = go;
+  $('newval').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  $('newval').focus();
 }
 function todayStr() { const d = new Date(), p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 
