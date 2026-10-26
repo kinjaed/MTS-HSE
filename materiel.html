@@ -61,6 +61,15 @@
   .dlg input:focus,.dlg select:focus{outline:2px solid var(--ac);outline-offset:-1px}
   .dlg input:disabled,.dlg select:disabled{opacity:.6}
   .dlg .ro{border:1px solid var(--bd);border-radius:4px;padding:6px 8px;background:var(--bg);min-height:30px}
+  .cp{position:relative}
+  .cp .cur{width:100%;text-align:left;min-height:32px;padding:4px 8px}
+  .cp .lst{display:none;position:absolute;left:0;right:0;top:100%;z-index:5;background:var(--card);border:1px solid var(--bd);border-radius:4px;max-height:180px;overflow:auto;box-shadow:0 4px 14px rgba(0,0,0,.25);margin-top:2px}
+  .cp.open .lst{display:block}
+  .cp .opt{padding:5px 8px;cursor:pointer}
+  .cp .opt:hover{background:var(--bg)}
+  .cp[data-dis="1"] .cur{opacity:.6;pointer-events:none}
+  .ret{display:flex;align-items:flex-end;gap:8px;margin-top:12px}
+  .ret .f{flex:1;margin:0}
   .dlg hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
   .dlg .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
   .dlg button{padding:6px 16px;border-radius:5px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
@@ -152,9 +161,9 @@ async function load(rawRecords) {
   } catch(e) { $('types').innerHTML = `<tr><td colspan=3 class="empty">Erreur : ${esc(e.message)}</td></tr>`; }
 }
 
-function badge(v) {
+function badge(v, colors) {
   if (!v) return '';
-  const o = state.etatColors[v] || {};
+  const o = (colors || state.etatColors)[v] || {};
   const st = (o.fillColor ? `background:${esc(o.fillColor)};` : '') + (o.textColor ? `color:${esc(o.textColor)};` : '');
   return `<span class="badge" style="${st}">${esc(v)}</span>`;
 }
@@ -222,13 +231,17 @@ function inputFor(k, col, v, m) {
   const t = mt.type || 'Text';
   if (k === 'des' || /^Ref:/.test(t)) {
     const opts = [...state.types].sort((a,b)=>coll.compare(String(a.des),String(b.des)));
+    const cur = state.types.find(t => sameType(m, t));
+    const curId = cur ? cur.id : Number(v);
     return `<select ${base} data-t="Ref"><option value="0"></option>` +
-      opts.map(o=>`<option value="${o.id}" ${o.id===Number(v)?'selected':''}>${esc(o.des)}</option>`).join('') + '</select>';
+      opts.map(o=>`<option value="${o.id}" ${o.id===curId?'selected':''}>${esc(o.des)}</option>`).join('') + '</select>';
   }
   if (t === 'Choice') {
     const ch = (mt.wo.choices || []).slice(); if (v && !ch.includes(v)) ch.push(v);
-    return `<select ${base} data-t="Choice"><option value=""></option>` +
-      ch.map(c=>`<option value="${esc(c)}" ${c===v?'selected':''}>${esc(c)}</option>`).join('') + '</select>';
+    const cols = mt.wo.choiceOptions || {};
+    return `<div class="cp" ${base.replace('disabled','data-dis="1"')} data-t="Choice" data-val="${esc(v ?? '')}">
+      <button type="button" class="cur">${badge(v, cols) || '&nbsp;'}</button>
+      <div class="lst"><div class="opt" data-v="">&nbsp;</div>${ch.map(c=>`<div class="opt" data-v="${esc(c)}">${badge(c, cols)}</div>`).join('')}</div></div>`;
   }
   if (t === 'Bool') return `<input type="checkbox" ${base} data-t="Bool" ${truthy(v)?'checked':''}>`;
   if (t === 'Int' || t === 'Numeric') return `<input type="number" step="any" ${base} data-t="Num" value="${esc(v ?? '')}">`;
@@ -244,22 +257,53 @@ function openEdit(id) {
     `<div class="f"><label>${l}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>`).join('');
   const ro = (l,v)=>`<div class="f"><label>${l}</label><div class="ro">${esc(v)}</div></div>`;
   $('dlg').innerHTML = `<h3>${esc(m.des)} — ${esc(m.num)}</h3>${f}<hr>${ro('Utilisateur',m.user)}${ro('Chantier',m.chantier)}
+    ${(m.user || m.chantier) ? `<div class="ret"><div class="f"><label>Date de retour</label><input type="date" id="dret" value="${todayStr()}"></div><button type="button" class="pri" id="retour">Retour</button></div>` : ''}
     <div class="err" id="err"></div>
     <div class="btns"><button id="cancel">Annuler</button><button class="pri" id="save">Enregistrer</button></div>`;
   $('modal').classList.add('open');
   $('cancel').onclick = closeEdit;
+  if ($('retour')) $('retour').onclick = doRetour;
   $('save').onclick = saveEdit;
   const first = $('dlg').querySelector('input,select'); if (first) first.focus();
 }
+function todayStr() { const d = new Date(), p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
+
+async function doRetour() {
+  const m = state.mats.find(x=>x.id===editId); if (!m) return;
+  const mc = state.mc || {}, meta = state.meta || {}, d = $('dret').value;
+  if (!d) { $('err').textContent = 'Choisissez une date de retour.'; return; }
+  const isRef = c => /^Ref:/.test((meta[c] || {}).type || '');
+  const isNum = c => /^Date(Time)?/.test((meta[c] || {}).type || '');
+  const fields = {};
+  if (mc.user) fields[mc.user] = isRef(mc.user) ? 0 : '';
+  if (mc.chantier) fields[mc.chantier] = isRef(mc.chantier) ? 0 : '';
+  if (mc.dr) fields[mc.dr] = isNum(mc.dr) ? Date.parse(d + 'T00:00:00Z') / 1000 : d;
+  if (mc.du) fields[mc.du] = isRef(mc.du) ? (m.raw[mc.user] || 0) : m.user;
+  try { await grist.selectedTable.update({id: editId, fields}); closeEdit(); }
+  catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
+}
+$('dlg').addEventListener('click', e => {
+  const cur = e.target.closest('.cur'), opt = e.target.closest('.opt');
+  if (cur) cur.parentElement.classList.toggle('open');
+  else if (opt) {
+    const cp = opt.closest('.cp'), v = opt.dataset.v;
+    cp.dataset.val = v;
+    cp.querySelector('.cur').innerHTML = opt.innerHTML;
+    cp.classList.remove('open');
+  }
+});
+
 function closeEdit() { $('modal').classList.remove('open'); editId = null; }
 
 async function saveEdit() {
   const m = state.mats.find(x=>x.id===editId); if (!m) return closeEdit();
   const fields = {};
-  $('dlg').querySelectorAll('[data-k]:not(:disabled)').forEach(el => {
+  $('dlg').querySelectorAll('[data-k]').forEach(el => {
+    if (el.disabled || el.dataset.dis === '1') return;
     const col = el.dataset.col, t = el.dataset.t, old = m.raw[col];
     let val;
     if (t === 'Ref') val = Number(el.value) || 0;
+    else if (t === 'Choice') val = el.dataset.val || '';
     else if (t === 'Bool') val = el.checked;
     else if (t === 'Num') val = el.value === '' ? null : Number(el.value);
     else if (t === 'Date') val = el.value ? Date.parse(el.value + 'T00:00:00Z') / 1000 : null;
