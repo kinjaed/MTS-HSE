@@ -68,6 +68,13 @@
   .cp .opt{padding:5px 8px;cursor:pointer}
   .cp .opt:hover{background:var(--bg)}
   .cp[data-dis="1"] .cur{opacity:.6;pointer-events:none}
+  .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px}
+  .hd h3{margin:0}
+  .dlg .pen{padding:2px 8px;font-size:15px;line-height:1.2;border-radius:6px}
+  .dlg .pen.on{background:var(--ac);border-color:var(--ac);color:#fff}
+  .aff{margin-top:4px}
+  .aff .row2{display:flex;gap:8px;margin-top:10px}
+  .aff .row2 .f{flex:1;margin:0}
   .ret{display:flex;align-items:flex-end;gap:8px;margin-top:12px}
   .ret .f{flex:1;margin:0}
   .dlg hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
@@ -91,6 +98,7 @@
   <div class="panel side" id="side"></div>
 </div>
 
+<div class="modal" id="modal2" style="z-index:20"><div class="dlg" id="dlg2" style="width:min(340px,100%)"></div></div>
 <div class="modal" id="modal"><div class="dlg" id="dlg"></div></div>
 
 <script>
@@ -128,6 +136,18 @@ async function loadMeta() {
   } catch(e) { return {}; }
 }
 
+async function loadLists() {
+  const act = async (table, re) => {
+    try {
+      const t = await grist.docApi.fetchTable(table), ks = Object.keys(t);
+      const c = pick(ks, re), a = pick(ks, /^actif$/);
+      return rows(t).filter(r => a ? truthy(r[a]) : true).map(r => ({id:r.id, name:String(r[c] ?? '')})).filter(x=>x.name)
+        .sort((x,y)=>coll.compare(x.name,y.name));
+    } catch(e) { return []; }
+  };
+  [state.users, state.chantiers] = await Promise.all([act('Utilisateurs', /^utilisateur$/), act('Chantiers', /^description$/)]);
+}
+
 async function load(rawRecords) {
   try {
     const [rend, typeTbl] = await Promise.all([
@@ -157,6 +177,7 @@ async function load(rawRecords) {
       total: tc.total ? r[tc.total] : state.mats.filter(m=>m.desId===r.id).length,
       dispo: tc.dispo ? r[tc.dispo] : state.mats.filter(m=>m.desId===r.id && m.libre).length
     }));
+    await loadLists();
     render();
   } catch(e) { $('types').innerHTML = `<tr><td colspan=3 class="empty">Erreur : ${esc(e.message)}</td></tr>`; }
 }
@@ -227,7 +248,8 @@ let editId = null;
 function inputFor(k, col, v, m) {
   const mt = (state.meta || {})[col] || {type:'Text', wo:{}};
   const dis = (mt.isFormula && mt.formula) ? 'disabled' : '';
-  const base = `data-k="${k}" data-col="${esc(col)}" ${dis}`;
+  const lock = (['des','num','marque','serie'].includes(k) && !dis) ? 'disabled data-lock="1"' : '';
+  const base = `data-k="${k}" data-col="${esc(col)}" ${dis} ${lock}`;
   const t = mt.type || 'Text';
   if (k === 'des' || /^Ref:/.test(t)) {
     const opts = [...state.types].sort((a,b)=>coll.compare(String(a.des),String(b.des)));
@@ -256,22 +278,62 @@ function openEdit(id) {
   const f = FIELDS.filter(([k])=>mc[k]).map(([k,l]) =>
     `<div class="f"><label>${l}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>`).join('');
   const ro = (l,v)=>`<div class="f"><label>${l}</label><div class="ro">${esc(v)}</div></div>`;
-  $('dlg').innerHTML = `<h3>${esc(m.des)} — ${esc(m.num)}</h3>${f}<hr>${ro('Utilisateur',m.user)}${ro('Chantier',m.chantier)}
+  const libre = !m.user && !m.chantier;
+  const opt = a => '<option value=""></option>' + (a || []).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');
+  $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${f}<hr>${ro('Utilisateur',m.user)}${ro('Chantier',m.chantier)}
+    ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button>
+      <div id="affpanel" style="display:none"><div class="row2">
+        <div class="f"><label>Utilisateur</label><select id="affu">${opt(state.users)}</select></div>
+        <div class="f"><label>Chantier</label><select id="affc">${opt(state.chantiers)}</select></div></div>
+        <div class="btns"><button type="button" class="pri" id="affok">Valider</button></div></div></div>` : ''}
     ${(m.user || m.chantier) ? `<div class="ret"><div class="f"><label>Date de retour</label><input type="date" id="dret" value="${todayStr()}"></div><button type="button" class="pri" id="retour">Retour</button></div>` : ''}
     <div class="err" id="err"></div>
     <div class="btns"><button id="cancel">Annuler</button><button class="pri" id="save">Enregistrer</button></div>`;
   $('modal').classList.add('open');
   $('cancel').onclick = closeEdit;
-  if ($('retour')) $('retour').onclick = doRetour;
+  if ($('retour')) $('retour').onclick = askRetour;
+  $('pen').onclick = () => {
+    $('pen').classList.toggle('on');
+    $('dlg').querySelectorAll('[data-lock]').forEach(el => { el.disabled = !el.disabled; });
+  };
+  if ($('affbtn')) {
+    $('affbtn').onclick = () => { const p = $('affpanel'); p.style.display = p.style.display === 'none' ? 'block' : 'none'; };
+    $('affok').onclick = doAffecter;
+  }
   $('save').onclick = saveEdit;
   const first = $('dlg').querySelector('input,select'); if (first) first.focus();
 }
 function todayStr() { const d = new Date(), p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 
+function askRetour() {
+  const m = state.mats.find(x=>x.id===editId); if (!m) return;
+  const d = $('dret').value;
+  if (!d) { $('err').textContent = 'Choisissez une date de retour.'; return; }
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Confirmer le retour</h3>
+    <p style="margin:0">Enregistrer le retour de <b>${esc(m.des)} ${esc(m.num)}</b> au ${esc(d.split('-').reverse().join('/'))} ?<br>L'utilisateur et le chantier seront vidés.</p>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Confirmer</button></div>`;
+  $('modal2').classList.add('open');
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = () => { $('modal2').classList.remove('open'); doRetour(); };
+  $('yes').focus();
+}
+
+async function doAffecter() {
+  const m = state.mats.find(x=>x.id===editId); if (!m) return;
+  const mc = state.mc || {}, meta = state.meta || {};
+  const u = state.users.find(x=>String(x.id)===$('affu').value), c = state.chantiers.find(x=>String(x.id)===$('affc').value);
+  if (!u && !c) { $('err').textContent = 'Choisissez un utilisateur et/ou un chantier.'; return; }
+  const isRef = col => /^Ref:/.test((meta[col] || {}).type || '');
+  const fields = {};
+  if (u && mc.user) fields[mc.user] = isRef(mc.user) ? u.id : u.name;
+  if (c && mc.chantier) fields[mc.chantier] = isRef(mc.chantier) ? c.id : c.name;
+  try { await grist.selectedTable.update({id: editId, fields}); closeEdit(); }
+  catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
+}
+
 async function doRetour() {
   const m = state.mats.find(x=>x.id===editId); if (!m) return;
   const mc = state.mc || {}, meta = state.meta || {}, d = $('dret').value;
-  if (!d) { $('err').textContent = 'Choisissez une date de retour.'; return; }
   const isRef = c => /^Ref:/.test((meta[c] || {}).type || '');
   const isNum = c => /^Date(Time)?/.test((meta[c] || {}).type || '');
   const fields = {};
@@ -317,6 +379,7 @@ async function saveEdit() {
 $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeEdit(); });
 document.addEventListener('keydown', e => {
   if (!editId) return;
+  if ($('modal2').classList.contains('open')) { if (e.key === 'Escape') $('modal2').classList.remove('open'); return; }
   if (e.key === 'Escape') closeEdit();
   else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') saveEdit();
 });
