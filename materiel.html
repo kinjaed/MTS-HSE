@@ -51,6 +51,21 @@
   .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg);overflow-wrap:anywhere}
   .side hr{border:0;border-top:1px solid var(--bd);width:100%;margin:2px 0}
   .empty{padding:16px;color:var(--mut);text-align:center;white-space:normal}
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:10;padding:8px}
+  .modal.open{display:flex}
+  .dlg{background:var(--card);border:1px solid var(--bd);border-radius:8px;width:min(440px,100%);max-height:100%;overflow:auto;padding:16px;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+  .dlg h3{margin:0 0 12px;font-size:15px}
+  .dlg .f{margin-bottom:10px}
+  .dlg .f label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
+  .dlg input[type=text],.dlg input[type=number],.dlg input[type=date],.dlg select{width:100%;padding:6px 8px;border:1px solid var(--bd);border-radius:4px;background:var(--card);color:var(--tx);font:inherit}
+  .dlg input:focus,.dlg select:focus{outline:2px solid var(--ac);outline-offset:-1px}
+  .dlg input:disabled,.dlg select:disabled{opacity:.6}
+  .dlg .ro{border:1px solid var(--bd);border-radius:4px;padding:6px 8px;background:var(--bg);min-height:30px}
+  .dlg hr{border:0;border-top:1px solid var(--bd);margin:12px 0}
+  .dlg .btns{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .dlg button{padding:6px 16px;border-radius:5px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+  .dlg button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+  .dlg .err{color:#dc2626;margin-top:8px;font-size:12px}
   @media (max-width:800px){.main{grid-template-columns:1fr;overflow:auto}}
 </style>
 </head>
@@ -66,6 +81,8 @@
   <div class="panel"><table><thead><tr><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th></tr></thead><tbody id="mats"></tbody></table></div>
   <div class="panel side" id="side"></div>
 </div>
+
+<div class="modal" id="modal"><div class="dlg" id="dlg"></div></div>
 
 <script>
 // ---- Détection tolérante des noms de colonnes ----
@@ -84,18 +101,21 @@ let state = { mats:[], types:[], cat:'TOUS', type:null, mat:null, dispoOnly:fals
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const truthy = v => v === true || v === 'true' || v === 1;
+const coll = new Intl.Collator('fr', {numeric:true, sensitivity:'base'});
 const sameType = (m,t) => (m.desId != null && m.desId === t.id) || (m.des && norm(m.des) === norm(t.des));
 
-// Couleurs du champ à choix unique (colonne État), lues dans les métadonnées Grist
-async function loadEtatColors(etatCol) {
+// Métadonnées des colonnes (type, choix, couleurs, formule)
+async function loadMeta() {
   try {
-    if (!etatCol) return {};
     const tid = await grist.selectedTable.getTableId();
     const tabs = rows(await grist.docApi.fetchTable('_grist_Tables'));
     const ref = (tabs.find(t => t.tableId === tid) || {}).id;
-    const col = rows(await grist.docApi.fetchTable('_grist_Tables_column')).find(c => c.parentId === ref && c.colId === etatCol);
-    const opts = JSON.parse((col && col.widgetOptions) || '{}');
-    return opts.choiceOptions || {};
+    const out = {};
+    rows(await grist.docApi.fetchTable('_grist_Tables_column')).filter(c => c.parentId === ref).forEach(c => {
+      let wo = {}; try { wo = JSON.parse(c.widgetOptions || '{}'); } catch(_) {}
+      out[c.colId] = { type:c.type, wo, isFormula:c.isFormula, formula:c.formula };
+    });
+    return out;
   } catch(e) { return {}; }
 }
 
@@ -107,7 +127,8 @@ async function load(rawRecords) {
     ]);
     const rr = rows(rend), byId = new Map(rr.map(r=>[r.id,r]));
     const mc = mapCols(Object.keys(rend), M);
-    state.etatColors = await loadEtatColors(mc.etat);
+    state.mc = mc; state.meta = await loadMeta();
+    state.etatColors = ((state.meta[mc.etat] || {}).wo || {}).choiceOptions || {};
     const raw = rawRecords || rows(await grist.fetchSelectedTable({includeColumns:'normal'}));
     state.mats = raw.map(r => {
       const d = byId.get(r.id) || {}, g = k => mc[k] ? d[mc[k]] : '';
@@ -115,7 +136,7 @@ async function load(rawRecords) {
       return { id:r.id, desId: (mc.des && r[mc.des] !== null && r[mc.des] !== '' && !isNaN(n)) ? n : null,
         des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'), serie:g('serie'), etat:g('etat'),
         user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'), dmd:g('dmd'), dr:g('dr'), du:g('du'),
-        libre: mc.libre ? truthy(r[mc.libre]) : false,
+        libre: mc.libre ? truthy(r[mc.libre]) : false, raw:r,
         all: norm(Object.entries(d).filter(([k])=>k!=='id').map(([,v])=>v).join(' ')) };
     });
     const tc = mapCols(Object.keys(typeTbl), T);
@@ -174,7 +195,8 @@ function render() {
   const selType = state.types.find(t=>t.id===state.type);
   const mats = state.mats.filter(m =>
     (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) &&
-    (!state.dispoOnly || m.libre) && (!q || hit(m)));
+    (!state.dispoOnly || m.libre) && (!q || hit(m)))
+    .sort((a,b) => coll.compare(String(a.num ?? ''), String(b.num ?? '')) || a.id - b.id);
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
   $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''} ${m.libre?'free':''}">
     <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${badge(m.etat)}</td>
@@ -188,13 +210,86 @@ function render() {
     : '<div class="empty">Sélectionnez un matériel</div>';
 }
 
+let lastClick = {id:null, t:0};
+
+const FIELDS = [['des','Désignation'],['num','N°'],['marque','Marque'],['serie','N° série'],['etat','État']];
+let editId = null;
+
+function inputFor(k, col, v, m) {
+  const mt = (state.meta || {})[col] || {type:'Text', wo:{}};
+  const dis = (mt.isFormula && mt.formula) ? 'disabled' : '';
+  const base = `data-k="${k}" data-col="${esc(col)}" ${dis}`;
+  const t = mt.type || 'Text';
+  if (k === 'des' || /^Ref:/.test(t)) {
+    const opts = [...state.types].sort((a,b)=>coll.compare(String(a.des),String(b.des)));
+    return `<select ${base} data-t="Ref"><option value="0"></option>` +
+      opts.map(o=>`<option value="${o.id}" ${o.id===Number(v)?'selected':''}>${esc(o.des)}</option>`).join('') + '</select>';
+  }
+  if (t === 'Choice') {
+    const ch = (mt.wo.choices || []).slice(); if (v && !ch.includes(v)) ch.push(v);
+    return `<select ${base} data-t="Choice"><option value=""></option>` +
+      ch.map(c=>`<option value="${esc(c)}" ${c===v?'selected':''}>${esc(c)}</option>`).join('') + '</select>';
+  }
+  if (t === 'Bool') return `<input type="checkbox" ${base} data-t="Bool" ${truthy(v)?'checked':''}>`;
+  if (t === 'Int' || t === 'Numeric') return `<input type="number" step="any" ${base} data-t="Num" value="${esc(v ?? '')}">`;
+  if (t === 'Date') return `<input type="date" ${base} data-t="Date" value="${typeof v==='number' ? new Date(v*1000).toISOString().slice(0,10) : ''}">`;
+  return `<input type="text" ${base} data-t="Text" value="${esc(v ?? '')}">`;
+}
+
+function openEdit(id) {
+  const m = state.mats.find(x=>x.id===id); if (!m) return;
+  editId = id;
+  const mc = state.mc || {};
+  const f = FIELDS.filter(([k])=>mc[k]).map(([k,l]) =>
+    `<div class="f"><label>${l}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>`).join('');
+  const ro = (l,v)=>`<div class="f"><label>${l}</label><div class="ro">${esc(v)}</div></div>`;
+  $('dlg').innerHTML = `<h3>${esc(m.des)} — ${esc(m.num)}</h3>${f}<hr>${ro('Utilisateur',m.user)}${ro('Chantier',m.chantier)}
+    <div class="err" id="err"></div>
+    <div class="btns"><button id="cancel">Annuler</button><button class="pri" id="save">Enregistrer</button></div>`;
+  $('modal').classList.add('open');
+  $('cancel').onclick = closeEdit;
+  $('save').onclick = saveEdit;
+  const first = $('dlg').querySelector('input,select'); if (first) first.focus();
+}
+function closeEdit() { $('modal').classList.remove('open'); editId = null; }
+
+async function saveEdit() {
+  const m = state.mats.find(x=>x.id===editId); if (!m) return closeEdit();
+  const fields = {};
+  $('dlg').querySelectorAll('[data-k]:not(:disabled)').forEach(el => {
+    const col = el.dataset.col, t = el.dataset.t, old = m.raw[col];
+    let val;
+    if (t === 'Ref') val = Number(el.value) || 0;
+    else if (t === 'Bool') val = el.checked;
+    else if (t === 'Num') val = el.value === '' ? null : Number(el.value);
+    else if (t === 'Date') val = el.value ? Date.parse(el.value + 'T00:00:00Z') / 1000 : null;
+    else val = el.value;
+    if (String(val ?? '') !== String(old ?? '')) fields[col] = val;
+  });
+  if (!Object.keys(fields).length) return closeEdit();
+  try { await grist.selectedTable.update({id: editId, fields}); closeEdit(); }
+  catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
+}
+$('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeEdit(); });
+document.addEventListener('keydown', e => {
+  if (!editId) return;
+  if (e.key === 'Escape') closeEdit();
+  else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') saveEdit();
+});
+
 document.addEventListener('click', e => {
   const pill = e.target.closest('.pill'), tr = e.target.closest('tbody tr[data-id]');
   if (pill) { state.cat = pill.dataset.c; state.type = null; render(); }
   else if (tr) {
     const id = Number(tr.dataset.id);
     if (tr.parentElement.id === 'types') state.type = state.type===id ? null : id;
-    else { state.mat = id; try { grist.setCursorPos({rowId:id}); } catch(_){} }
+    else {
+      const now = Date.now();
+      const dbl = lastClick.id === id && now - lastClick.t < 450;
+      lastClick = dbl ? {id:null,t:0} : {id, t:now};
+      state.mat = id; try { grist.setCursorPos({rowId:id}); } catch(_){}
+      if (dbl) { render(); openEdit(id); return; }
+    }
     render();
   }
 });
