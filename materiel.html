@@ -51,6 +51,13 @@
   .side label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
   .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg);overflow-wrap:anywhere}
   .side .bottom{margin-top:auto}
+  .side .bottom hr{margin:0 0 16px}
+  .side .okb{width:100%;padding:8px 10px;background:#16a34a;border:1px solid #16a34a;color:#fff;font:inherit;font-weight:600;border-radius:5px;cursor:pointer}
+  .side .okb:hover{background:#15803d}
+  .pcrow{display:flex;gap:6px}
+  .pcrow>div:first-child{flex:1;min-width:0}
+  .pcrow>div:last-child{width:68px;flex:none}
+  .side input.ro{width:100%;border:1px solid var(--bd);border-radius:4px;padding:5px 8px;background:var(--bg);color:var(--tx);font:inherit;min-height:27px}
   .side .del,.dlg button.danger{background:#dc2626;border:1px solid #dc2626;color:#fff;font:inherit;font-weight:600;border-radius:5px;cursor:pointer}
   .side .del{width:100%;padding:8px 10px}
   .side .del:hover,.dlg button.danger:hover{background:#b91c1c}
@@ -145,6 +152,7 @@ async function loadMeta() {
     const ref = (tabs.find(t => t.tableId === tid) || {}).id;
     const out = {};
     state.tableRef = ref;
+    state.tableIds = tabs.map(t => t.tableId);
     state.metaCols = rows(await grist.docApi.fetchTable('_grist_Tables_column'));
     state.metaCols.filter(c => c.parentId === ref).forEach(c => {
       let wo = {}; try { wo = JSON.parse(c.widgetOptions || '{}'); } catch(_) {}
@@ -193,6 +201,24 @@ const pcOf = row => {
   return st.base;
 };
 
+async function loadCats() {
+  state.cats = null;
+  try {
+    const id = (state.tableIds || []).find(t => norm(t) === 'categories');
+    if (!id) return;
+    const t = await grist.docApi.fetchTable(id), ks = Object.keys(t);
+    state.cats = { rows: rows(t), valCol: pick(ks, /^validite?$/) };
+  } catch(e) { state.cats = null; }
+}
+function validOf(m) {
+  const c = state.cats; if (!c || !c.valCol) return '';
+  const t = state.types.find(x => sameType(m, x));
+  let row = t && t.catId != null ? c.rows.find(r => r.id === t.catId) : null;
+  if (!row && m.cat) row = c.rows.find(r => Object.entries(r).some(([k,v]) => typeof v === 'string' && norm(v) && norm(v) === norm(m.cat)));
+  const v = row ? row[c.valCol] : '';
+  return v == null ? '' : String(v);
+}
+
 async function load(rawRecords) {
   try {
     const [rend, typeTbl] = await Promise.all([
@@ -222,12 +248,12 @@ async function load(rawRecords) {
     const catByType = new Map();
     state.mats.forEach(m => { if (m.desId != null && m.cat) catByType.set(m.desId, m.cat); });
     state.types = rows(typeTbl).map(r => ({
-      id:r.id, des:r[tc.des] ?? '',
+      id:r.id, des:r[tc.des] ?? '', catId: (tc.cat && typeof r[tc.cat] === 'number') ? r[tc.cat] : null,
       cat: String((tc.catTxt && r[tc.catTxt]) || catByType.get(r.id) || (tc.cat && typeof r[tc.cat] === 'string' ? r[tc.cat] : '') || '—'),
       total: tc.total ? r[tc.total] : state.mats.filter(m=>m.desId===r.id).length,
       dispo: tc.dispo ? r[tc.dispo] : state.mats.filter(m=>m.desId===r.id && m.libre).length
     }));
-    await loadLists();
+    await Promise.all([loadLists(), loadCats()]);
     render();
   } catch(e) { $('types').innerHTML = `<tr><td colspan=3 class="empty">Erreur : ${esc(e.message)}</td></tr>`; }
 }
@@ -287,7 +313,9 @@ function render() {
   const f = (l,v,st)=>`<div><label>${l}</label><div class="v" ${st ? `style="${st}"` : ''}>${esc(v)}</div></div>`;
   const pst = m && m.pcStyle ? `background:${esc(m.pcStyle.fill)};${m.pcStyle.text ? 'color:' + esc(m.pcStyle.text) + ';' : ''}` : '';
   $('side').innerHTML = m
-    ? f('Date mise à dispo',m.dmd)+f('Dernier utilisateur',m.du)+f('Date retour',m.dr)+'<hr>'+f('Dernier contrôle',m.dc)+f('Prochain contrôle',m.pc,pst)+f('Mise en service',m.mes)+'<div class="bottom"><hr><button type="button" class="del" id="delbtn">Supprimer ce matériel</button></div>'
+    ? f('Date mise à dispo',m.dmd)+f('Dernier utilisateur',m.du)+f('Date retour',m.dr)+'<hr>'+f('Mise en service',m.mes)+f('Dernier contrôle',m.dc)
+      +`<div class="pcrow"><div><label>Prochain contrôle</label><div class="v" ${pst ? `style="${pst}"` : ''}>${esc(m.pc)}</div></div><div><label>Validité</label><input type="text" class="ro" readonly value="${esc(validOf(m))}"></div></div>`
+      +'<hr><button type="button" class="okb" id="okbtn">Matériel contrôlé</button><div class="bottom"><hr><button type="button" class="del" id="delbtn">Supprimer ce matériel</button></div>'
     : '<div class="empty">Sélectionnez un matériel</div>';
 }
 
@@ -487,7 +515,7 @@ document.addEventListener('keydown', e => {
 function askDelete() {
   const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
   $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Supprimer ce matériel</h3>
-    <p style="margin:0">Ce matériel sera supprimé de la base de donnée. Cette action est irréversible. Confirmer la suppression de <b>${esc(m.num)}</b> ?</p>
+    <p style="margin:0">Ce matériel sera supprimé de la base de donnée. Cette action est irréversible.<br>Confirmer la suppression de <b>${esc(m.num)}</b> ?</p>
     <div class="err" id="err2"></div>
     <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="danger" id="yes">Supprimer</button></div>`;
   $('modal2').classList.add('open');
@@ -498,7 +526,28 @@ function askDelete() {
   };
   $('no').focus();
 }
-$('side').addEventListener('click', e => { if (e.target.closest('#delbtn')) askDelete(); });
+function askControle() {
+  const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Matériel contrôlé — ${esc(m.num)}</h3>
+    <div class="f"><label>Date de contrôle</label><input type="date" id="dctl" value="${todayStr()}"></div>
+    <div class="err" id="err2"></div>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Valider</button></div>`;
+  $('modal2').classList.add('open');
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = async () => {
+    const d = $('dctl').value, mc = state.mc || {}, t = ((state.meta || {})[mc.dc] || {}).type || '';
+    if (!d) { $('err2').textContent = 'Choisissez une date.'; return; }
+    if (!mc.dc) { $('err2').textContent = 'Colonne « Dernier contrôle » introuvable.'; return; }
+    const val = /^Date(Time)?/.test(t) ? Date.parse(d + 'T00:00:00Z') / 1000 : d;
+    try { await grist.selectedTable.update({id: m.id, fields: {[mc.dc]: val}}); $('modal2').classList.remove('open'); }
+    catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
+  };
+  $('dctl').focus();
+}
+$('side').addEventListener('click', e => {
+  if (e.target.closest('#delbtn')) askDelete();
+  else if (e.target.closest('#okbtn')) askControle();
+});
 
 document.addEventListener('click', e => {
   const pill = e.target.closest('.pill'), tr = e.target.closest('tbody tr[data-id]');
