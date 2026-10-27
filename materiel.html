@@ -61,6 +61,28 @@
   .uc input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--ac)}
   @media (max-width:640px){.uc{grid-template-columns:1fr}}
   .cp.up .lst{top:auto;bottom:100%;margin:0 0 2px}
+  .actions button.gold{background:#f2b705;border-color:#f2b705;color:#1f2933}
+  .actions button.gold:hover{background:#d9a404;border-color:#d9a404}
+  .sheet{background:#fff;color:#111;border:1px solid var(--bd);border-radius:4px;padding:16px}
+  .dlg .sheet input.ptitle{width:100%;font-size:18px;font-weight:700;border:1px dashed #bbb;border-radius:4px;background:transparent;color:#111;padding:4px 6px;margin-bottom:4px}
+  .sheet .pcount{font-size:11px;color:#555;margin-bottom:8px}
+  .sheet table{font-size:12px}
+  .sheet th{position:static;background:#e3eefc;color:#111;border-bottom:1px solid #999}
+  .sheet td{border-bottom:1px solid #ccc;color:#111}
+  .sheet tr.free td{font-weight:700}
+  .sheet thead{display:table-header-group}
+  .sheet tr{page-break-inside:avoid}
+  @media print{
+    @page{size:A4 landscape;margin:12mm}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html,body{height:auto!important;overflow:visible!important;background:#fff!important;padding:0!important}
+    body>*{display:none!important}
+    body>#modal5{display:block!important;position:static!important;background:none!important;padding:0!important}
+    #modal5 .noprint{display:none!important}
+    #dlg5{width:100%!important;max-height:none!important;overflow:visible!important;border:0!important;box-shadow:none!important;background:#fff!important;padding:0!important}
+    .sheet{border:0;padding:0}
+    .dlg .sheet input.ptitle{border:0;padding:0}
+  }
   .rightcol{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
   .rightcol .side{flex:1 1 auto;min-height:0}
   .actions{flex:none;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:visible}
@@ -142,10 +164,12 @@
     <div class="panel actions">
       <button type="button" id="btnUC">Utilisateurs &amp; Chantiers</button>
       <button type="button" id="btnAdd">Ajouter un matériel</button>
+      <button type="button" id="btnPrint" class="gold">Imprimer...</button>
     </div>
   </div>
 </div>
 
+<div class="modal" id="modal5" style="z-index:12"><div class="dlg" id="dlg5" style="width:min(1000px,100%)"></div></div>
 <div class="modal" id="modal4" style="z-index:12"><div class="dlg" id="dlg4" style="width:min(440px,100%)"></div></div>
 <div class="modal" id="modal3" style="z-index:12"><div class="dlg" id="dlg3" style="width:min(780px,100%)"></div></div>
 <div class="modal" id="modal2" style="z-index:20"><div class="dlg" id="dlg2" style="width:min(340px,100%);overflow:visible"></div></div>
@@ -354,6 +378,7 @@ function render() {
     (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) &&
     (!state.dispoOnly || m.libre) && (!q || hit(m)) && passWarn(m))
     .sort((a,b) => coll.compare(String(a.num ?? ''), String(b.num ?? '')) || a.id - b.id);
+  state.shown = mats;
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
   $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''} ${m.libre?'free':''}">
     <td class="n">${m.pcStyle ? `<span class="dot" title="Prochain contrôle : ${esc(m.pc)}" style="background:${esc(m.pcStyle.fill)}"></span>` : ''}</td><td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${badge(m.etat)}</td>
@@ -582,6 +607,7 @@ async function saveEdit() {
 $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeEdit(); });
 document.addEventListener('keydown', e => {
   if ($('modal2').classList.contains('open')) { if (e.key === 'Escape') $('modal2').classList.remove('open'); return; }
+  if ($('modal5').classList.contains('open')) { if (e.key === 'Escape') $('modal5').classList.remove('open'); return; }
   if ($('modal4').classList.contains('open')) { if (e.key === 'Escape') $('modal4').classList.remove('open'); return; }
   if ($('modal3').classList.contains('open')) { if (e.key === 'Escape') $('modal3').classList.remove('open'); return; }
   if (!editId) return;
@@ -725,6 +751,31 @@ async function saveAddMat() {
 }
 $('dlg4').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') saveAddMat(); });
 $('btnAdd').onclick = openAddMat;
+
+function openPrint() {
+  const list = state.shown || [];
+  const body = list.map(m => `<tr class="${m.libre ? 'free' : ''}"><td>${esc(m.num)}</td><td>${esc(m.des)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td>
+    <td>${badge(m.etat)}</td><td>${esc(m.user)}</td><td>${esc(m.chantier)}</td><td>${esc(dateFmt(m,'pc'))}</td></tr>`).join('')
+    || '<tr><td colspan="8" class="empty">Aucune ligne</td></tr>';
+  const today = new Date().toLocaleDateString('fr-FR', {day:'2-digit', month:'2-digit', year:'numeric'});
+  $('dlg5').innerHTML = `<div class="hd noprint"><h3>Aperçu avant impression</h3></div>
+    <div class="sheet">
+      <input type="text" class="ptitle" id="ptitle" value="Liste du matériel au ${today}">
+      <div class="pcount">${list.length} matériel${list.length > 1 ? 's' : ''}</div>
+      <table><thead><tr><th>N°</th><th>Désignation</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th><th>Prochain contrôle</th></tr></thead>
+      <tbody>${body}</tbody></table>
+    </div>
+    <div class="err noprint" id="perr"></div>
+    <hr class="noprint">
+    <div class="btns noprint"><button type="button" id="pclose">Fermer</button><button type="button" class="pri" id="pprint">Imprimer</button></div>`;
+  $('modal5').classList.add('open');
+  $('pclose').onclick = () => $('modal5').classList.remove('open');
+  $('pprint').onclick = () => {
+    try { window.print(); }
+    catch(e) { $('perr').textContent = 'L’impression est bloquée par le navigateur : ' + (e.message || e); }
+  };
+}
+$('btnPrint').onclick = openPrint;
 
 function askControle() {
   const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
