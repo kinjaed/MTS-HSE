@@ -50,6 +50,11 @@
   .side{padding:10px;display:flex;flex-direction:column;gap:10px}
   .side label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
   .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg);overflow-wrap:anywhere}
+  .side .bottom{margin-top:auto}
+  .side .del,.dlg button.danger{background:#dc2626;border:1px solid #dc2626;color:#fff;font:inherit;font-weight:600;border-radius:5px;cursor:pointer}
+  .side .del{width:100%;padding:8px 10px}
+  .side .del:hover,.dlg button.danger:hover{background:#b91c1c}
+  .dlg button.danger{padding:6px 16px}
   .side hr{border:0;border-top:1px solid var(--bd);width:100%;margin:2px 0}
   .empty{padding:16px;color:var(--mut);text-align:center;white-space:normal}
   .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:10;padding:8px}
@@ -282,7 +287,7 @@ function render() {
   const f = (l,v,st)=>`<div><label>${l}</label><div class="v" ${st ? `style="${st}"` : ''}>${esc(v)}</div></div>`;
   const pst = m && m.pcStyle ? `background:${esc(m.pcStyle.fill)};${m.pcStyle.text ? 'color:' + esc(m.pcStyle.text) + ';' : ''}` : '';
   $('side').innerHTML = m
-    ? f('Date mise à dispo',m.dmd)+f('Date retour',m.dr)+f('Dernier utilisateur',m.du)+'<hr>'+f('Dernier contrôle',m.dc)+f('Prochain contrôle',m.pc,pst)+f('Mise en service',m.mes)
+    ? f('Date mise à dispo',m.dmd)+f('Dernier utilisateur',m.du)+f('Date retour',m.dr)+'<hr>'+f('Dernier contrôle',m.dc)+f('Prochain contrôle',m.pc,pst)+f('Mise en service',m.mes)+'<div class="bottom"><hr><button type="button" class="del" id="delbtn">Supprimer ce matériel</button></div>'
     : '<div class="empty">Sélectionnez un matériel</div>';
 }
 
@@ -473,11 +478,27 @@ async function saveEdit() {
 }
 $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeEdit(); });
 document.addEventListener('keydown', e => {
-  if (!editId) return;
   if ($('modal2').classList.contains('open')) { if (e.key === 'Escape') $('modal2').classList.remove('open'); return; }
+  if (!editId) return;
   if (e.key === 'Escape') closeEdit();
   else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') saveEdit();
 });
+
+function askDelete() {
+  const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Supprimer ce matériel</h3>
+    <p style="margin:0">Ce matériel sera supprimé de la base de donnée. Cette action est irréversible. Confirmer la suppression de <b>${esc(m.num)}</b> ?</p>
+    <div class="err" id="err2"></div>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="danger" id="yes">Supprimer</button></div>`;
+  $('modal2').classList.add('open');
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = async () => {
+    try { await grist.selectedTable.destroy(m.id); state.mat = null; $('modal2').classList.remove('open'); render(); }
+    catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
+  };
+  $('no').focus();
+}
+$('side').addEventListener('click', e => { if (e.target.closest('#delbtn')) askDelete(); });
 
 document.addEventListener('click', e => {
   const pill = e.target.closest('.pill'), tr = e.target.closest('tbody tr[data-id]');
