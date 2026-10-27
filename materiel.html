@@ -50,6 +50,20 @@
   .side{padding:10px;display:flex;flex-direction:column;gap:10px}
   .side label{display:block;font-size:11px;color:var(--mut);margin-bottom:2px}
   .side div.v{border:1px solid var(--bd);border-radius:4px;padding:5px 8px;min-height:27px;background:var(--bg);overflow-wrap:anywhere}
+  .uc{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .uc h4{margin:0 0 6px;font-size:13px}
+  .uc .lst3{display:flex;gap:6px}
+  .uc .btnc{display:flex;flex-direction:column;gap:6px}
+  .uc .btnc button{width:30px;height:30px;padding:0;font-weight:700;font-size:17px;line-height:1}
+  .uc .tbl{flex:1;min-width:0;height:320px;overflow:auto;background:var(--card);border:1px solid var(--bd);border-radius:4px}
+  .uc input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--ac)}
+  @media (max-width:640px){.uc{grid-template-columns:1fr}}
+  .cp.up .lst{top:auto;bottom:100%;margin:0 0 2px}
+  .rightcol{display:flex;flex-direction:column;gap:8px;min-height:0;min-width:0}
+  .rightcol .side{flex:1 1 auto;min-height:0}
+  .actions{flex:none;padding:10px;display:flex;flex-direction:column;gap:8px;overflow:visible}
+  .actions button{width:100%;padding:8px 10px;background:var(--ac);border:1px solid var(--ac);color:#fff;font:inherit;font-weight:600;border-radius:5px;cursor:pointer}
+  .actions button:hover{background:#1d4ed8;border-color:#1d4ed8}
   .side .bottom{margin-top:auto}
   .side .bottom hr{margin:0 0 16px}
   .side .okb{width:100%;padding:8px 10px;background:#16a34a;border:1px solid #16a34a;color:#fff;font:inherit;font-weight:600;border-radius:5px;cursor:pointer}
@@ -119,9 +133,18 @@
 <div class="main">
   <div class="panel"><table id="left"><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
   <div class="panel"><table><thead><tr><th class="n warn" title="Prochain contrôle">⚠</th><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th></tr></thead><tbody id="mats"></tbody></table></div>
-  <div class="panel side" id="side"></div>
+  <div class="rightcol">
+    <div class="panel side" id="side"></div>
+    <div class="panel actions">
+      <button type="button" id="btnUC">Utilisateurs &amp; Chantiers</button>
+      <button type="button" id="btnAdd">Ajouter un matériel</button>
+      <button type="button" id="btnCert">Certification</button>
+    </div>
+  </div>
 </div>
 
+<div class="modal" id="modal4" style="z-index:12"><div class="dlg" id="dlg4" style="width:min(440px,100%)"></div></div>
+<div class="modal" id="modal3" style="z-index:12"><div class="dlg" id="dlg3" style="width:min(780px,100%)"></div></div>
 <div class="modal" id="modal2" style="z-index:20"><div class="dlg" id="dlg2" style="width:min(340px,100%);overflow:visible"></div></div>
 <div class="modal" id="modal"><div class="dlg" id="dlg"></div></div>
 
@@ -168,39 +191,15 @@ async function loadLists() {
     try {
       const t = await grist.docApi.fetchTable(table), ks = Object.keys(t);
       const c = pick(ks, re), a = pick(ks, /^actif$/);
-      const list = rows(t).filter(r => a ? truthy(r[a]) : true).map(r => ({id:r.id, name:String(r[c] ?? '')})).filter(x=>x.name)
+      const all = rows(t).map(r => ({id:r.id, name:String(r[c] ?? ''), actif: a ? truthy(r[a]) : true}))
         .sort((x,y)=>coll.compare(x.name,y.name));
-      return {list, c, a};
-    } catch(e) { return {list:[], c:null, a:null}; }
+      return {list: all.filter(x => x.actif && x.name), all, c, a};
+    } catch(e) { return {list:[], all:[], c:null, a:null}; }
   };
   const [u, c] = await Promise.all([act('Utilisateurs', /^utilisateur$/), act('Chantiers', /^description$/)]);
-  state.users = u.list; state.chantiers = c.list; state.uCols = {c:u.c, a:u.a}; state.cCols = {c:c.c, a:c.a};
+  state.users = u.list; state.chantiers = c.list; state.usersAll = u.all; state.chantiersAll = c.all;
+  state.uCols = {c:u.c, a:u.a}; state.cCols = {c:c.c, a:c.a};
 }
-
-async function loadRules(pcCol) {
-  state.pcStyle = null;
-  try {
-    if (!pcCol || !state.metaCols) return;
-    const cols = state.metaCols;
-    const col = cols.find(c => c.parentId === state.tableRef && c.colId === pcCol); if (!col) return;
-    const ids = v => (Array.isArray(v) ? v : []).filter(x => typeof x === 'number');
-    const parse = t => { try { return JSON.parse(t || '{}'); } catch(_) { return {}; } };
-    let wo = parse(col.widgetOptions), rl = ids(col.rules);
-    if (!rl.length) { // règles définies au niveau du champ de la vue
-      const fl = rows(await grist.docApi.fetchTable('_grist_Views_section_field')).filter(f => f.colRef === col.id && ids(f.rules).length);
-      if (fl.length) { rl = ids(fl[0].rules); wo = parse(fl[0].widgetOptions); }
-    }
-    const ro = wo.rulesOptions || [];
-    const rules = rl.map((id,i) => ({helper: (cols.find(c => c.id === id) || {}).colId, fill: (ro[i]||{}).fillColor, text: (ro[i]||{}).textColor})).filter(r => r.helper && r.fill);
-    const f = (wo.fillColor || '').toLowerCase();
-    state.pcStyle = { rules, base: (f && f !== '#ffffff') ? {fill: wo.fillColor, text: wo.textColor} : null };
-  } catch(e) { state.pcStyle = null; }
-}
-const pcOf = row => {
-  const st = state.pcStyle; if (!st) return null;
-  for (const r of st.rules) if (truthy(row[r.helper])) return {fill:r.fill, text:r.text};
-  return st.base;
-};
 
 async function loadCats() {
   state.cats = null;
@@ -416,7 +415,7 @@ function openEdit(id) {
   const first = $('dlg').querySelector('input,select'); if (first) first.focus();
 }
 
-function openAdd(kind) {
+function openAdd(kind, cb) {
   const isU = kind === 'u';
   $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">${isU ? 'Nouvel utilisateur' : 'Nouveau chantier'}</h3>
     <div class="f"><input type="text" id="newval" placeholder="${isU ? 'Nom de l’utilisateur' : 'Description du chantier'}"></div>
@@ -431,11 +430,14 @@ function openAdd(kind) {
     try {
       const res = await grist.getTable(isU ? 'Utilisateurs' : 'Chantiers').create({fields});
       await loadLists();
-      const keep = [$('affu').value, $('affc').value];
-      $('affu').innerHTML = optList(state.users); $('affc').innerHTML = optList(state.chantiers);
-      $('affu').value = keep[0]; $('affc').value = keep[1];
       const nid = res && (res.id ?? (Array.isArray(res) ? (res[0] || {}).id : undefined));
-      if (nid != null) $(isU ? 'affu' : 'affc').value = String(nid);
+      if (cb) cb(nid);
+      else {
+        const keep = [$('affu').value, $('affc').value];
+        $('affu').innerHTML = optList(state.users); $('affc').innerHTML = optList(state.chantiers);
+        $('affu').value = keep[0]; $('affc').value = keep[1];
+        if (nid != null) $(isU ? 'affu' : 'affc').value = String(nid);
+      }
       $('modal2').classList.remove('open');
     } catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
   };
@@ -503,7 +505,7 @@ async function doRetour() {
   try { await grist.selectedTable.update({id: editId, fields}); closeEdit(); }
   catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
 }
-[$('dlg'), $('dlg2')].forEach(el => el.addEventListener('click', e => {
+[$('dlg'), $('dlg2'), $('dlg4')].forEach(el => el.addEventListener('click', e => {
   const cur = e.target.closest('.cur'), opt = e.target.closest('.opt');
   if (cur) cur.parentElement.classList.toggle('open');
   else if (opt) {
@@ -538,6 +540,8 @@ async function saveEdit() {
 $('modal').addEventListener('mousedown', e => { if (e.target === $('modal')) closeEdit(); });
 document.addEventListener('keydown', e => {
   if ($('modal2').classList.contains('open')) { if (e.key === 'Escape') $('modal2').classList.remove('open'); return; }
+  if ($('modal4').classList.contains('open')) { if (e.key === 'Escape') $('modal4').classList.remove('open'); return; }
+  if ($('modal3').classList.contains('open')) { if (e.key === 'Escape') $('modal3').classList.remove('open'); return; }
   if (!editId) return;
   if (e.key === 'Escape') closeEdit();
   else if (e.key === 'Enter' && e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON') saveEdit();
@@ -564,6 +568,121 @@ function cpHtml(col, v, id) {
   return `<div class="cp" id="${id}" data-val="${esc(v ?? '')}"><button type="button" class="cur">${badge(v, cols) || '&nbsp;'}</button>
     <div class="lst"><div class="opt" data-v="">&nbsp;</div>${ch.map(c=>`<div class="opt" data-v="${esc(c)}">${badge(c, cols)}</div>`).join('')}</div></div>`;
 }
+
+const UC = { u:{table:'Utilisateurs', title:'Utilisateurs', head:'Utilisateur', sel:null},
+             c:{table:'Chantiers', title:'Chantiers', head:'Description', sel:null} };
+const ucList = k => (k === 'u' ? state.usersAll : state.chantiersAll) || [];
+
+function renderUC() {
+  ['u','c'].forEach(k => {
+    $('uct' + k).innerHTML = ucList(k).map(r => `<tr data-id="${r.id}" class="${r.id === UC[k].sel ? 'sel' : ''}">
+      <td>${esc(r.name)}</td><td class="n"><input type="checkbox" data-id="${r.id}" ${r.actif ? 'checked' : ''}></td></tr>`).join('')
+      || '<tr><td colspan="2" class="empty">Aucun élément</td></tr>';
+  });
+}
+
+async function openUC() {
+  await loadLists();
+  UC.u.sel = UC.c.sel = null;
+  $('dlg3').innerHTML = `<div class="hd"><h3>Utilisateurs &amp; Chantiers</h3></div>
+    <div class="uc">${['u','c'].map(k => `<div><h4>${UC[k].title}</h4><div class="lst3">
+      <div class="btnc"><button type="button" data-act="add" data-k="${k}" title="Ajouter">+</button><button type="button" data-act="del" data-k="${k}" title="Supprimer la ligne sélectionnée">−</button></div>
+      <div class="tbl" data-k="${k}"><table><thead><tr><th>${UC[k].head}</th><th class="n">Actif</th></tr></thead><tbody id="uct${k}"></tbody></table></div>
+    </div></div>`).join('')}</div>
+    <div class="err" id="ucerr"></div>
+    <hr><div class="btns"><button type="button" class="pri" id="ucclose">Fermer</button></div>`;
+  $('modal3').classList.add('open');
+  $('ucclose').onclick = () => $('modal3').classList.remove('open');
+  renderUC();
+}
+
+function askDelUC(k) {
+  const r = ucList(k).find(x => x.id === UC[k].sel);
+  if (!r) { $('ucerr').textContent = 'Sélectionnez d’abord une ligne à supprimer.'; return; }
+  $('ucerr').textContent = '';
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Supprimer ${k === 'u' ? 'l’utilisateur' : 'le chantier'}</h3>
+    <p style="margin:0">Supprimer <b>${esc(r.name)}</b> ? Cette action est irréversible.</p>
+    <div class="err" id="err2"></div>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="danger" id="yes">Supprimer</button></div>`;
+  $('modal2').classList.add('open');
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = async () => {
+    try { await grist.getTable(UC[k].table).destroy(r.id); await loadLists(); UC[k].sel = null; renderUC(); $('modal2').classList.remove('open'); }
+    catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
+  };
+  $('no').focus();
+}
+
+$('dlg3').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (b) {
+    const k = b.dataset.k;
+    if (b.dataset.act === 'add') openAdd(k, nid => { UC[k].sel = nid; renderUC(); });
+    else askDelUC(k);
+    return;
+  }
+  const tr = e.target.closest('tr[data-id]');
+  if (tr && e.target.type !== 'checkbox') {
+    const k = tr.closest('.tbl').dataset.k;
+    UC[k].sel = Number(tr.dataset.id);
+    tr.parentElement.querySelectorAll('tr').forEach(x => x.classList.toggle('sel', x === tr));
+  }
+});
+$('dlg3').addEventListener('change', async e => {
+  const cb = e.target; if (cb.type !== 'checkbox') return;
+  const k = cb.closest('.tbl').dataset.k, cols = k === 'u' ? state.uCols : state.cCols;
+  try {
+    await grist.getTable(UC[k].table).update({id: Number(cb.dataset.id), fields: {[cols.a || 'Actif']: cb.checked}});
+    await loadLists();
+  } catch(err) {
+    $('ucerr').textContent = 'Erreur : ' + (err.message || err);
+    await loadLists(); renderUC();
+  }
+});
+$('modal3').addEventListener('mousedown', e => { if (e.target === $('modal3')) $('modal3').classList.remove('open'); });
+$('btnUC').onclick = openUC;
+
+function openAddMat() {
+  const mc = state.mc || {};
+  const f = (k, l, html) => mc[k] ? `<div class="f"><label>${l}</label>${html}</div>` : '';
+  const types = [...state.types].sort((a,b) => coll.compare(String(a.des), String(b.des)));
+  const des = `<select id="nm-des"><option value="0"></option>${types.map(t => `<option value="${t.id}" ${t.id === state.type ? 'selected' : ''}>${esc(t.des)}</option>`).join('')}</select>`;
+  const txt = id => `<input type="text" id="${id}">`;
+  const etat = mc.etat ? cpHtml(mc.etat, '', 'nm-etat').replace('class="cp"', 'class="cp up"') : '';
+  $('dlg4').innerHTML = `<div class="hd"><h3>Ajouter un matériel</h3></div>
+    ${f('des','Désignation',des)}${f('num','N°',txt('nm-num'))}
+    <div class="row2">${f('marque','Marque',txt('nm-marque'))}${f('serie','N° série',txt('nm-serie'))}</div>
+    ${f('etat','État',etat)}${f('mes','Mise en service','<input type="date" id="nm-mes">')}
+    <div class="err" id="nm-err"></div>
+    <hr><div class="btns"><button type="button" id="nm-cancel">Annuler</button><button type="button" class="pri" id="nm-ok">Ajouter</button></div>`;
+  $('modal4').classList.add('open');
+  $('nm-cancel').onclick = () => $('modal4').classList.remove('open');
+  $('nm-ok').onclick = saveAddMat;
+  const first = $('dlg4').querySelector('select,input'); if (first) first.focus();
+}
+
+async function saveAddMat() {
+  const mc = state.mc || {}, meta = state.meta || {};
+  const val = id => ($(id) ? $(id).value.trim() : '');
+  const typ = k => ((meta[mc[k]] || {}).type || '');
+  const conv = (k, v) => /^(Int|Numeric)$/.test(typ(k)) ? Number(v) : v;
+  const desId = Number(val('nm-des')) || 0;
+  if (mc.des && !desId) { $('nm-err').textContent = 'Choisissez une désignation.'; return; }
+  const fields = {};
+  if (mc.des) fields[mc.des] = desId;
+  [['num','nm-num'],['marque','nm-marque'],['serie','nm-serie']].forEach(([k, id]) => { const v = val(id); if (mc[k] && v !== '') fields[mc[k]] = conv(k, v); });
+  if (mc.etat && $('nm-etat') && $('nm-etat').dataset.val) fields[mc.etat] = $('nm-etat').dataset.val;
+  const d = val('nm-mes');
+  if (mc.mes && d) fields[mc.mes] = /^Date(Time)?/.test(typ('mes')) ? Date.parse(d + 'T00:00:00Z') / 1000 : d;
+  try {
+    const res = await grist.selectedTable.create({fields});
+    const nid = res && (res.id ?? (Array.isArray(res) ? (res[0] || {}).id : undefined));
+    if (nid != null) state.mat = nid;
+    $('modal4').classList.remove('open');
+  } catch(e) { $('nm-err').textContent = 'Erreur : ' + (e.message || e); }
+}
+$('dlg4').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') saveAddMat(); });
+$('btnAdd').onclick = openAddMat;
 
 function askControle() {
   const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
