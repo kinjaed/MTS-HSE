@@ -454,7 +454,7 @@ function openAdd(kind, cb) {
       const sp = t => t.trim().replace(/\s+/g, ' ');
       const nom = sp($('newnom').value), pre = sp($('newpre').value);
       if (!nom || !pre) { $('err2').textContent = 'Saisissez le nom et le prénom.'; return; }
-      v = nom.toLocaleUpperCase('fr') + ' ' + pre.charAt(0).toLocaleUpperCase('fr') + pre.slice(1).toLocaleLowerCase('fr');
+      v = nom.toLocaleUpperCase('fr') + ' ' + pre.toLocaleLowerCase('fr').replace(/(^|[-\s])(\p{L})/gu, (_, sep, ch) => sep + ch.toLocaleUpperCase('fr'));
     } else {
       v = $('newval').value.trim();
       if (!v) { $('err2').textContent = 'Saisissez une valeur.'; return; }
