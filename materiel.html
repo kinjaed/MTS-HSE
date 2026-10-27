@@ -121,7 +121,7 @@
   <div class="panel side" id="side"></div>
 </div>
 
-<div class="modal" id="modal2" style="z-index:20"><div class="dlg" id="dlg2" style="width:min(340px,100%)"></div></div>
+<div class="modal" id="modal2" style="z-index:20"><div class="dlg" id="dlg2" style="width:min(340px,100%);overflow:visible"></div></div>
 <div class="modal" id="modal"><div class="dlg" id="dlg"></div></div>
 
 <script>
@@ -275,6 +275,20 @@ function moveSlider() {
   s.style.transform = `translate(${on.offsetLeft}px,${on.offsetTop}px)`;
 }
 
+function dateFmt(m, k) {
+  try {
+    const col = (state.mc || {})[k]; if (!col) return m[k];
+    const v = m.raw[col], t = ((state.meta || {})[col] || {}).type || '';
+    const opt = {day:'2-digit', month:'2-digit', year:'numeric'};
+    if (typeof v === 'number' && v && /^Date/.test(t)) {
+      const tz = /^DateTime/.test(t) ? (t.split(':')[1] || undefined) : 'UTC';
+      return new Date(v * 1000).toLocaleDateString('fr-FR', {...opt, timeZone: tz});
+    }
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10).split('-').reverse().join('/');
+  } catch(e) {}
+  return m[k];
+}
+
 function render() {
   const cats = ['TOUS', ...[...new Set(state.types.map(t=>t.cat))].sort()];
   if (!cats.includes(state.cat)) state.cat = 'TOUS';
@@ -313,8 +327,8 @@ function render() {
   const f = (l,v,st)=>`<div><label>${l}</label><div class="v" ${st ? `style="${st}"` : ''}>${esc(v)}</div></div>`;
   const pst = m && m.pcStyle ? `background:${esc(m.pcStyle.fill)};${m.pcStyle.text ? 'color:' + esc(m.pcStyle.text) + ';' : ''}` : '';
   $('side').innerHTML = m
-    ? f('Date mise à dispo',m.dmd)+f('Dernier utilisateur',m.du)+f('Date retour',m.dr)+'<hr>'+f('Mise en service',m.mes)+f('Dernier contrôle',m.dc)
-      +`<div class="pcrow"><div><label>Prochain contrôle</label><div class="v" ${pst ? `style="${pst}"` : ''}>${esc(m.pc)}</div></div><div><label>Validité</label><input type="text" class="ro" readonly value="${esc(validOf(m))}"></div></div>`
+    ? f('Date mise à dispo',dateFmt(m,'dmd'))+f('Dernier utilisateur',m.du)+f('Date retour',dateFmt(m,'dr'))+'<hr>'+f('Mise en service',dateFmt(m,'mes'))+f('Dernier contrôle',dateFmt(m,'dc'))
+      +`<div class="pcrow"><div><label>Prochain contrôle</label><div class="v" ${pst ? `style="${pst}"` : ''}>${esc(dateFmt(m,'pc'))}</div></div><div><label>Validité</label><input type="text" class="ro" readonly value="${esc(validOf(m))}"></div></div>`
       +'<hr><button type="button" class="okb" id="okbtn">Matériel contrôlé</button><div class="bottom"><hr><button type="button" class="del" id="delbtn">Supprimer ce matériel</button></div>'
     : '<div class="empty">Sélectionnez un matériel</div>';
 }
@@ -376,7 +390,17 @@ function openEdit(id) {
     $('dlg').querySelectorAll('[data-lock]').forEach(el => { el.disabled = !el.disabled; });
   };
   if ($('affbtn')) {
-    $('affbtn').onclick = () => { const on = $('dlg').classList.toggle('aff-on'); $('affbtn').textContent = on ? 'Annuler' : 'Affecter'; };
+    $('affbtn').onclick = () => {
+      if (!$('dlg').classList.contains('aff-on') && ['perte','reparation','horsservice'].includes(norm(m.etat))) {
+        $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Affectation impossible</h3>
+          <p style="margin:0">L'état <b>${esc(m.etat)}</b> ne permet pas l'affectation de ce matériel. Vérifiez le matériel et changez son état avant de l'affecter</p>
+          <div class="btns"><button type="button" class="pri" id="yes">OK</button></div>`;
+        $('modal2').classList.add('open');
+        $('yes').onclick = () => $('modal2').classList.remove('open');
+        $('yes').focus();
+        return;
+      }
+      const on = $('dlg').classList.toggle('aff-on'); $('affbtn').textContent = on ? 'Annuler' : 'Affecter'; };
     $('affok').onclick = askAffecter;
     $('plusu').onclick = () => openAdd('u');
     $('plusc').onclick = () => openAdd('c');
@@ -472,7 +496,7 @@ async function doRetour() {
   try { await grist.selectedTable.update({id: editId, fields}); closeEdit(); }
   catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
 }
-$('dlg').addEventListener('click', e => {
+[$('dlg'), $('dlg2')].forEach(el => el.addEventListener('click', e => {
   const cur = e.target.closest('.cur'), opt = e.target.closest('.opt');
   if (cur) cur.parentElement.classList.toggle('open');
   else if (opt) {
@@ -481,7 +505,7 @@ $('dlg').addEventListener('click', e => {
     cp.querySelector('.cur').innerHTML = opt.innerHTML;
     cp.classList.remove('open');
   }
-});
+}));
 
 function closeEdit() { $('modal').classList.remove('open'); editId = null; }
 
@@ -526,10 +550,19 @@ function askDelete() {
   };
   $('no').focus();
 }
+function cpHtml(col, v, id) {
+  const mt = (state.meta || {})[col] || {wo:{}};
+  const ch = ((mt.wo || {}).choices || []).slice(); if (v && !ch.includes(v)) ch.push(v);
+  const cols = (mt.wo || {}).choiceOptions || {};
+  return `<div class="cp" id="${id}" data-val="${esc(v ?? '')}"><button type="button" class="cur">${badge(v, cols) || '&nbsp;'}</button>
+    <div class="lst"><div class="opt" data-v="">&nbsp;</div>${ch.map(c=>`<div class="opt" data-v="${esc(c)}">${badge(c, cols)}</div>`).join('')}</div></div>`;
+}
+
 function askControle() {
   const m = state.mats.find(x=>x.id===state.mat); if (!m) return;
   $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Matériel contrôlé — ${esc(m.num)}</h3>
     <div class="f"><label>Date de contrôle</label><input type="date" id="dctl" value="${todayStr()}"></div>
+    ${(state.mc || {}).etat ? `<div class="f"><label>État</label>${cpHtml(state.mc.etat, m.raw[state.mc.etat], 'ctlEtat')}</div>` : ''}
     <div class="err" id="err2"></div>
     <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Valider</button></div>`;
   $('modal2').classList.add('open');
@@ -539,7 +572,9 @@ function askControle() {
     if (!d) { $('err2').textContent = 'Choisissez une date.'; return; }
     if (!mc.dc) { $('err2').textContent = 'Colonne « Dernier contrôle » introuvable.'; return; }
     const val = /^Date(Time)?/.test(t) ? Date.parse(d + 'T00:00:00Z') / 1000 : d;
-    try { await grist.selectedTable.update({id: m.id, fields: {[mc.dc]: val}}); $('modal2').classList.remove('open'); }
+    const fields = {[mc.dc]: val};
+    if (mc.etat && $('ctlEtat')) { const ne = $('ctlEtat').dataset.val || ''; if (ne !== String(m.raw[mc.etat] ?? '')) fields[mc.etat] = ne; }
+    try { await grist.selectedTable.update({id: m.id, fields}); $('modal2').classList.remove('open'); }
     catch(e) { $('err2').textContent = 'Erreur : ' + (e.message || e); }
   };
   $('dctl').focus();
