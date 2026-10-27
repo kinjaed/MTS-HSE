@@ -83,6 +83,7 @@
   .cp[data-dis="1"] .cur{opacity:.6;pointer-events:none}
   .hd{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:12px}
   .hd h3{margin:0}
+  .wn{font-weight:700;margin:-6px 0 12px}
   .dlg .pen{padding:2px 8px;font-size:15px;line-height:1.2;border-radius:6px}
   .dlg .pen.on{background:var(--ac);border-color:var(--ac);color:#fff}
   .dlg .row2{display:flex;gap:8px}
@@ -130,7 +131,7 @@ const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,''
 const M = {
   des:/^de?signation$/, cat:/^cate?gorie$/, num:/^n$/, marque:/^marque$/, serie:/^nse?rie$/, etat:/^e?tat$/,
   user:/^utilisateur$/, chantier:/^chantier$/, libre:/^libre$/, mes:/^miseenservice$/,
-  dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^date(de)?miseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/
+  dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^date(de)?miseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/, ac:/^acontr?o?ler$/, ex:/^expire?$/
 };
 const T = { des:/^de?signation$/, cat:/^cate?gorie$/, catTxt:/^cat.*(txt|text|nom)$/, total:/^enservice$/, dispo:/^dispo$/ };
 const pick = (keys, re) => keys.find(k => re.test(norm(k)));
@@ -241,7 +242,7 @@ async function load(rawRecords) {
       return { id:r.id, desId: (mc.des && r[mc.des] !== null && r[mc.des] !== '' && !isNaN(n)) ? n : null,
         des:g('des'), cat:g('cat'), num:g('num'), marque:g('marque'), serie:g('serie'), etat:g('etat'),
         user:g('user'), chantier:g('chantier'), mes:g('mes'), dc:g('dc'), pc:g('pc'), dmd:g('dmd'), dr:g('dr'), du:g('du'),
-        libre: mc.libre ? truthy(r[mc.libre]) : false, raw:r, pcStyle: pcOf(allById.get(r.id) || {}),
+        libre: mc.libre ? truthy(r[mc.libre]) : false, raw:r, ac: mc.ac ? truthy(r[mc.ac]) : false, ex: mc.ex ? truthy(r[mc.ex]) : false, pcStyle: pcOf(allById.get(r.id) || {}),
         all: norm(Object.entries(d).filter(([k])=>k!=='id').map(([,v])=>v).join(' ')) };
     });
     const tc = mapCols(Object.keys(typeTbl), T);
@@ -377,11 +378,12 @@ function openEdit(id) {
   const mc = state.mc || {};
   const fh = k => mc[k] ? `<div class="f"><label>${FIELDS.find(x=>x[0]===k)[1]}</label>${inputFor(k, mc[k], m.raw[mc[k]], m)}</div>` : '';
   const f = fh('des') + fh('num') + `<div class="row2">${fh('marque')}${fh('serie')}</div>` + fh('etat');
+  const warn = m.ac ? '<div class="wn" style="color:#ea580c">Expire bientôt</div>' : m.ex ? '<div class="wn" style="color:#dc2626">Certificat expiré</div>' : '';
   const libre = !m.user && !m.chantier;
   const rof = (l, v, c) => `<div class="f"><label>${l}</label><div class="ro ro-${c}">${esc(v)}</div>` + (libre
     ? `<div class="edit-row"><select id="aff${c}">${optList(c==='u' ? state.users : state.chantiers)}</select><button type="button" id="plus${c}" class="plus" title="Ajouter">+</button></div>` : '') + '</div>';
   $('dlg').classList.remove('aff-on');
-  $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${f}<hr>${rof('Utilisateur',m.user,'u')}${rof('Chantier',m.chantier,'c')}
+  $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${warn}${f}<hr>${rof('Utilisateur',m.user,'u')}${rof('Chantier',m.chantier,'c')}
     ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button><button type="button" class="pri affok-btn" id="affok">Valider</button><input type="date" id="affdate" class="affdate" value="${todayStr()}" title="Date de mise à dispo"></div>` : ''}
     ${(m.user || m.chantier) ? `<div class="ret"><div class="f"><label>Date de retour</label><input type="date" id="dret" value="${todayStr()}"></div><button type="button" class="pri" id="retour">Retour</button></div>` : ''}
     <div class="err" id="err"></div>
