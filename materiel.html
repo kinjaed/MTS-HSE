@@ -27,6 +27,8 @@
   .sw i{width:34px;height:18px;border-radius:9px;background:var(--bd);position:relative;transition:.15s}
   .sw i::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.15s}
   .sw input:checked+i{background:var(--ac)}
+  .sw.warn input:checked+i{background:#f97316}
+  .sw.red input:checked+i{background:#dc2626}
   .sw input:checked+i::after{left:18px}
   /* Disposition : gauche réduit de moitié, droite réduite de moitié */
   .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(150px,.55fr) minmax(300px,2fr) minmax(120px,.4fr);gap:8px}
@@ -129,6 +131,8 @@
   <div class="pills" id="pills"><div class="slider" id="slider"></div></div>
   <input class="search" id="q" type="search" placeholder="Rechercher…">
   <label class="sw"><input type="checkbox" id="dispo"><i></i>Dispo uniquement</label>
+  <label class="sw warn"><input type="checkbox" id="fech"><i></i>Échéance à venir</label>
+  <label class="sw red"><input type="checkbox" id="fexp"><i></i>Expiré</label>
 </div>
 <div class="main">
   <div class="panel"><table id="left"><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
@@ -318,6 +322,9 @@ function dateFmt(m, k) {
   return r;
 }
 
+const warnOn = () => !!(state.fEch || state.fExp);
+const passWarn = m => !warnOn() || (state.fEch && m.ac) || (state.fExp && m.ex);
+
 function render() {
   const cats = ['TOUS', ...[...new Set(state.types.map(t=>t.cat))].sort()];
   if (!cats.includes(state.cat)) state.cat = 'TOUS';
@@ -335,7 +342,8 @@ function render() {
   const types = state.types
     .filter(t => state.cat==='TOUS' || t.cat===state.cat)
     .filter(t => !state.dispoOnly || t.dispo>0)
-    .filter(t => !q || state.mats.some(m => sameType(m,t) && hit(m)));
+    .filter(t => !q || state.mats.some(m => sameType(m,t) && hit(m)))
+    .filter(t => !warnOn() || state.mats.some(m => sameType(m,t) && passWarn(m)));
   if (state.type && !types.some(t=>t.id===state.type)) state.type = null;
   $('types').innerHTML = types.map(t=>`<tr data-id="${t.id}" class="${t.id===state.type?'sel':''}">
     <td title="${esc(t.des)}">${esc(t.des)}</td><td class="n">${esc(t.total)}</td><td class="n ${t.dispo>0?'ok':'zero'}">${esc(t.dispo)}</td></tr>`).join('')
@@ -344,7 +352,7 @@ function render() {
   const selType = state.types.find(t=>t.id===state.type);
   const mats = state.mats.filter(m =>
     (selType ? sameType(m, selType) : types.some(t=>sameType(m,t))) &&
-    (!state.dispoOnly || m.libre) && (!q || hit(m)))
+    (!state.dispoOnly || m.libre) && (!q || hit(m)) && passWarn(m))
     .sort((a,b) => coll.compare(String(a.num ?? ''), String(b.num ?? '')) || a.id - b.id);
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
   $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''} ${m.libre?'free':''}">
@@ -762,6 +770,8 @@ document.addEventListener('click', e => {
   }
 });
 $('dispo').addEventListener('change', e => { state.dispoOnly = e.target.checked; render(); });
+$('fech').addEventListener('change', e => { state.fEch = e.target.checked; render(); });
+$('fexp').addEventListener('change', e => { state.fExp = e.target.checked; render(); });
 $('q').addEventListener('input', e => { state.q = e.target.value; render(); });
 new ResizeObserver(() => moveSlider()).observe($('pills'));
 window.addEventListener('resize', moveSlider);
