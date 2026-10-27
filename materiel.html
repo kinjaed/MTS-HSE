@@ -286,7 +286,12 @@ function dateFmt(m, k) {
     }
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10).split('-').reverse().join('/');
   } catch(e) {}
-  return m[k];
+  const r = String(m[k] ?? '').trim();
+  const iso = r.match(/^(\d{4})-(\d{2})-(\d{2})/);       // texte déjà rendu par Grist (AAAA-MM-JJ)
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const dm = r.match(/^(\d{1,2})[.\-\/](\d{1,2})[.\-\/](\d{4})/);   // JJ-MM-AAAA, JJ.MM.AAAA...
+  if (dm) return `${dm[1].padStart(2,'0')}/${dm[2].padStart(2,'0')}/${dm[3]}`;
+  return r;
 }
 
 function render() {
