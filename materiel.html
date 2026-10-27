@@ -81,8 +81,9 @@
   .edit-row select{flex:1;min-width:0;font-weight:700}
   .dlg .plus{padding:4px 12px;font-weight:700}
   .aff{display:flex;gap:8px;margin-top:4px}
-  .affok-btn{display:none}
-  .aff-on .affok-btn{display:inline-block}
+  .affok-btn,.affdate{display:none}
+  .dlg .aff input.affdate{width:auto}
+  .aff-on .affok-btn,.aff-on .affdate{display:inline-block}
   .aff .row2{display:flex;gap:8px;margin-top:10px}
   .aff .row2 .f{flex:1;margin:0}
   .ret{display:flex;align-items:flex-end;gap:8px;margin-top:12px}
@@ -104,7 +105,7 @@
 </div>
 <div class="main">
   <div class="panel"><table id="left"><thead><tr><th>Désignation</th><th class="n">Total</th><th class="n">Dispo</th></tr></thead><tbody id="types"></tbody></table></div>
-  <div class="panel"><table><thead><tr><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th><th class="n warn" title="Prochain contrôle">⚠</th></tr></thead><tbody id="mats"></tbody></table></div>
+  <div class="panel"><table><thead><tr><th class="n warn" title="Prochain contrôle">⚠</th><th>N°</th><th>Marque</th><th>N° série</th><th>État</th><th>Utilisateur</th><th>Chantier</th></tr></thead><tbody id="mats"></tbody></table></div>
   <div class="panel side" id="side"></div>
 </div>
 
@@ -273,9 +274,8 @@ function render() {
     .sort((a,b) => coll.compare(String(a.num ?? ''), String(b.num ?? '')) || a.id - b.id);
   if (state.mat && !mats.some(m=>m.id===state.mat)) state.mat = null;
   $('mats').innerHTML = mats.map(m=>`<tr data-id="${m.id}" class="${m.id===state.mat?'sel':''} ${m.libre?'free':''}">
-    <td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${badge(m.etat)}</td>
-    <td>${esc(m.user)}</td><td>${esc(m.chantier)}</td>
-    <td class="n">${m.pcStyle ? `<span class="dot" title="Prochain contrôle : ${esc(m.pc)}" style="background:${esc(m.pcStyle.fill)}"></span>` : ''}</td></tr>`).join('')
+    <td class="n">${m.pcStyle ? `<span class="dot" title="Prochain contrôle : ${esc(m.pc)}" style="background:${esc(m.pcStyle.fill)}"></span>` : ''}</td><td>${esc(m.num)}</td><td>${esc(m.marque)}</td><td>${esc(m.serie)}</td><td>${badge(m.etat)}</td>
+    <td>${esc(m.user)}</td><td>${esc(m.chantier)}</td></tr>`).join('')
     || '<tr><td colspan=7 class="empty">Aucun matériel</td></tr>';
 
   const m = state.mats.find(x=>x.id===state.mat);
@@ -330,7 +330,7 @@ function openEdit(id) {
     ? `<div class="edit-row"><select id="aff${c}">${optList(c==='u' ? state.users : state.chantiers)}</select><button type="button" id="plus${c}" class="plus" title="Ajouter">+</button></div>` : '') + '</div>';
   $('dlg').classList.remove('aff-on');
   $('dlg').innerHTML = `<div class="hd"><h3>${esc(m.des)} — ${esc(m.num)}</h3><button type="button" class="pen" id="pen" title="Modifier les 4 premiers champs">✎</button></div>${f}<hr>${rof('Utilisateur',m.user,'u')}${rof('Chantier',m.chantier,'c')}
-    ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button><button type="button" class="pri affok-btn" id="affok">Valider</button></div>` : ''}
+    ${libre ? `<div class="aff"><button type="button" id="affbtn">Affecter</button><button type="button" class="pri affok-btn" id="affok">Valider</button><input type="date" id="affdate" class="affdate" value="${todayStr()}" title="Date de mise à dispo"></div>` : ''}
     ${(m.user || m.chantier) ? `<div class="ret"><div class="f"><label>Date de retour</label><input type="date" id="dret" value="${todayStr()}"></div><button type="button" class="pri" id="retour">Retour</button></div>` : ''}
     <div class="err" id="err"></div>
     <hr>
@@ -344,7 +344,7 @@ function openEdit(id) {
   };
   if ($('affbtn')) {
     $('affbtn').onclick = () => { const on = $('dlg').classList.toggle('aff-on'); $('affbtn').textContent = on ? 'Annuler' : 'Affecter'; };
-    $('affok').onclick = doAffecter;
+    $('affok').onclick = askAffecter;
     $('plusu').onclick = () => openAdd('u');
     $('plusc').onclick = () => openAdd('c');
   }
@@ -395,15 +395,33 @@ function askRetour() {
   $('yes').focus();
 }
 
+function askAffecter() {
+  const m = state.mats.find(x=>x.id===editId); if (!m) return;
+  const u = state.users.find(x=>String(x.id)===$('affu').value), c = state.chantiers.find(x=>String(x.id)===$('affc').value);
+  const d = $('affdate').value;
+  if (!u && !c) { $('err').textContent = 'Choisissez un utilisateur et/ou un chantier.'; return; }
+  if (!d) { $('err').textContent = 'Choisissez une date de mise à dispo.'; return; }
+  $('err').textContent = '';
+  $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">Confirmer l’affectation</h3>
+    <p style="margin:0">Affecter <b>${esc(m.des)} ${esc(m.num)}</b>${u ? ` à <b>${esc(u.name)}</b>` : ''}${c ? ` sur <b>${esc(c.name)}</b>` : ''}<br>Date de mise à dispo : <b>${esc(d.split('-').reverse().join('/'))}</b> ?</p>
+    <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Confirmer</button></div>`;
+  $('modal2').classList.add('open');
+  $('no').onclick = () => $('modal2').classList.remove('open');
+  $('yes').onclick = () => { $('modal2').classList.remove('open'); doAffecter(); };
+  $('yes').focus();
+}
+
 async function doAffecter() {
   const m = state.mats.find(x=>x.id===editId); if (!m) return;
   const mc = state.mc || {}, meta = state.meta || {};
   const u = state.users.find(x=>String(x.id)===$('affu').value), c = state.chantiers.find(x=>String(x.id)===$('affc').value);
-  if (!u && !c) { $('err').textContent = 'Choisissez un utilisateur et/ou un chantier.'; return; }
+  const d = $('affdate').value;
   const isRef = col => /^Ref:/.test((meta[col] || {}).type || '');
+  const isNum = col => /^Date(Time)?/.test((meta[col] || {}).type || '');
   const fields = {};
   if (u && mc.user) fields[mc.user] = isRef(mc.user) ? u.id : u.name;
   if (c && mc.chantier) fields[mc.chantier] = isRef(mc.chantier) ? c.id : c.name;
+  if (d && mc.dmd) fields[mc.dmd] = isNum(mc.dmd) ? Date.parse(d + 'T00:00:00Z') / 1000 : d;
   try { await grist.selectedTable.update({id: editId, fields}); $('dlg').classList.remove('aff-on'); $('affbtn').textContent = 'Affecter'; closeEdit(); }
   catch(e) { $('err').textContent = 'Erreur : ' + (e.message || e); }
 }
