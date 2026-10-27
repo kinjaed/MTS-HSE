@@ -118,7 +118,7 @@ const norm = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,''
 const M = {
   des:/^de?signation$/, cat:/^cate?gorie$/, num:/^n$/, marque:/^marque$/, serie:/^nse?rie$/, etat:/^e?tat$/,
   user:/^utilisateur$/, chantier:/^chantier$/, libre:/^libre$/, mes:/^miseenservice$/,
-  dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^datemiseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/
+  dc:/^derniercontr?o?le$/, pc:/^prochaincontr?o?le$/, dmd:/^date(de)?miseadispo$/, dr:/^dateretour$/, du:/^dernierutil$/
 };
 const T = { des:/^de?signation$/, cat:/^cate?gorie$/, catTxt:/^cat.*(txt|text|nom)$/, total:/^enservice$/, dispo:/^dispo$/ };
 const pick = (keys, re) => keys.find(k => re.test(norm(k)));
