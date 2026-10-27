@@ -218,6 +218,31 @@ function validOf(m) {
   return v == null ? '' : String(v);
 }
 
+async function loadRules(pcCol) {
+  state.pcStyle = null;
+  try {
+    if (!pcCol || !state.metaCols) return;
+    const cols = state.metaCols;
+    const col = cols.find(c => c.parentId === state.tableRef && c.colId === pcCol); if (!col) return;
+    const ids = v => (Array.isArray(v) ? v : []).filter(x => typeof x === 'number');
+    const parse = t => { try { return JSON.parse(t || '{}'); } catch(_) { return {}; } };
+    let wo = parse(col.widgetOptions), rl = ids(col.rules);
+    if (!rl.length) { // règles définies au niveau du champ de la vue
+      const fl = rows(await grist.docApi.fetchTable('_grist_Views_section_field')).filter(f => f.colRef === col.id && ids(f.rules).length);
+      if (fl.length) { rl = ids(fl[0].rules); wo = parse(fl[0].widgetOptions); }
+    }
+    const ro = wo.rulesOptions || [];
+    const rules = rl.map((id,i) => ({helper: (cols.find(c => c.id === id) || {}).colId, fill: (ro[i]||{}).fillColor, text: (ro[i]||{}).textColor})).filter(r => r.helper && r.fill);
+    const f = (wo.fillColor || '').toLowerCase();
+    state.pcStyle = { rules, base: (f && f !== '#ffffff') ? {fill: wo.fillColor, text: wo.textColor} : null };
+  } catch(e) { state.pcStyle = null; }
+}
+const pcOf = row => {
+  const st = state.pcStyle; if (!st) return null;
+  for (const r of st.rules) if (truthy(row[r.helper])) return {fill:r.fill, text:r.text};
+  return st.base;
+};
+
 async function load(rawRecords) {
   try {
     const [rend, typeTbl] = await Promise.all([
