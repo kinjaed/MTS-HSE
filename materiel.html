@@ -486,8 +486,8 @@ function openAdd(kind, cb) {
     if (isU) {
       const sp = t => t.trim().replace(/\s+/g, ' ');
       const nom = sp($('newnom').value), pre = sp($('newpre').value);
-      if (!nom || !pre) { $('err2').textContent = 'Saisissez le nom et le prénom.'; return; }
-      v = nom.toLocaleUpperCase('fr') + ' ' + pre.toLocaleLowerCase('fr').replace(/(^|[-\s])(\p{L})/gu, (_, sep, ch) => sep + ch.toLocaleUpperCase('fr'));
+      if (!nom) { $('err2').textContent = 'Le nom est obligatoire.'; return; }
+      v = nom.toLocaleUpperCase('fr') + (pre ? ' ' + pre.toLocaleLowerCase('fr').replace(/(^|[-\s])(\p{L})/gu, (_, sep, ch) => sep + ch.toLocaleUpperCase('fr')) : '');
     } else {
       v = $('newval').value.trim();
       if (!v) { $('err2').textContent = 'Saisissez une valeur.'; return; }
@@ -720,7 +720,7 @@ function openAddMat() {
   $('dlg4').innerHTML = `<div class="hd"><h3>Ajouter un matériel</h3></div>
     ${f('des','Désignation',des)}${f('num','N°',txt('nm-num'))}
     <div class="row2">${f('marque','Marque',txt('nm-marque'))}${f('serie','N° série',txt('nm-serie'))}</div>
-    ${f('etat','État',etat)}${f('mes','Mise en service','<input type="date" id="nm-mes">')}
+    ${f('etat','État',etat)}${f('mes','Mise en service',`<input type="date" id="nm-mes" value="${todayStr()}">`)}
     <div class="err" id="nm-err"></div>
     <hr><div class="btns"><button type="button" id="nm-cancel">Annuler</button><button type="button" class="pri" id="nm-ok">Ajouter</button></div>`;
   $('modal4').classList.add('open');
