@@ -442,13 +442,23 @@ function openEdit(id) {
 function openAdd(kind, cb) {
   const isU = kind === 'u';
   $('dlg2').innerHTML = `<h3 style="margin:0 0 10px;font-size:15px">${isU ? 'Nouvel utilisateur' : 'Nouveau chantier'}</h3>
-    <div class="f"><input type="text" id="newval" placeholder="${isU ? 'Nom de l’utilisateur' : 'Description du chantier'}"></div>
+    ${isU
+      ? `<div class="row2"><div class="f"><label>NOM</label><input type="text" id="newnom"></div><div class="f"><label>Prénom</label><input type="text" id="newpre"></div></div>`
+      : `<div class="f"><input type="text" id="newval" placeholder="Description du chantier"></div>`}
     <div class="err" id="err2"></div>
     <div class="btns"><button type="button" id="no">Annuler</button><button type="button" class="pri" id="yes">Ajouter</button></div>`;
   $('modal2').classList.add('open');
   const go = async () => {
-    const v = $('newval').value.trim();
-    if (!v) { $('err2').textContent = 'Saisissez une valeur.'; return; }
+    let v;
+    if (isU) {
+      const sp = t => t.trim().replace(/\s+/g, ' ');
+      const nom = sp($('newnom').value), pre = sp($('newpre').value);
+      if (!nom || !pre) { $('err2').textContent = 'Saisissez le nom et le prénom.'; return; }
+      v = nom.toLocaleUpperCase('fr') + ' ' + pre.charAt(0).toLocaleUpperCase('fr') + pre.slice(1).toLocaleLowerCase('fr');
+    } else {
+      v = $('newval').value.trim();
+      if (!v) { $('err2').textContent = 'Saisissez une valeur.'; return; }
+    }
     const cols = isU ? state.uCols : state.cCols;
     const fields = { [cols.c || (isU ? 'Utilisateur' : 'Description')]: v, [cols.a || 'Actif']: true };
     try {
@@ -467,8 +477,8 @@ function openAdd(kind, cb) {
   };
   $('no').onclick = () => $('modal2').classList.remove('open');
   $('yes').onclick = go;
-  $('newval').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-  $('newval').focus();
+  $('dlg2').querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); }));
+  $('dlg2').querySelector('input').focus();
 }
 function todayStr() { const d = new Date(), p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 
@@ -672,7 +682,7 @@ function openAddMat() {
   const types = [...state.types].sort((a,b) => coll.compare(String(a.des), String(b.des)));
   const des = `<select id="nm-des"><option value="0"></option>${types.map(t => `<option value="${t.id}" ${t.id === state.type ? 'selected' : ''}>${esc(t.des)}</option>`).join('')}</select>`;
   const txt = id => `<input type="text" id="${id}">`;
-  const etat = mc.etat ? cpHtml(mc.etat, '', 'nm-etat').replace('class="cp"', 'class="cp up"') : '';
+  const etat = mc.etat ? cpHtml(mc.etat, 'NEUF', 'nm-etat').replace('class="cp"', 'class="cp up"') : '';
   $('dlg4').innerHTML = `<div class="hd"><h3>Ajouter un matériel</h3></div>
     ${f('des','Désignation',des)}${f('num','N°',txt('nm-num'))}
     <div class="row2">${f('marque','Marque',txt('nm-marque'))}${f('serie','N° série',txt('nm-serie'))}</div>
@@ -735,6 +745,7 @@ $('side').addEventListener('click', e => {
 });
 
 document.addEventListener('click', e => {
+  if (e.target.closest('.modal')) return;
   const pill = e.target.closest('.pill'), tr = e.target.closest('tbody tr[data-id]');
   if (pill) { state.cat = pill.dataset.c; state.type = null; render(); }
   else if (tr) {
