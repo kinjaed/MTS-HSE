@@ -16,6 +16,7 @@
     --accent-soft: #dff1f6;
     --green: #2e9e4f;
     --search-bg: #e2f5e0; --search-line: #b9dfb5;
+    --win-bg: #d9e2eb; --win-line: #b3c2d1; --blue: #1d6fd8;
     --bad-bg: #fcd5d5; --bad-ink: #8a1c1c;
     --dot-orange: #f08c00; --dot-red: #d62f2f;
   }
@@ -25,6 +26,7 @@
       --line: #2f3b46; --accent: #4cc3e0; --accent-soft: #1d3a45;
       --green: #3fbf63;
       --search-bg: #24402b; --search-line: #35603f;
+      --win-bg: #2b3845; --win-line: #435566; --blue: #2f7fe6;
       --bad-bg: #4a2323; --bad-ink: #f5a6a6;
     }
   }
@@ -109,20 +111,24 @@
   .dlg.z6 { z-index: 6; }
   .dlg.z7 { z-index: 7; }
   .dlg[hidden] { display: none; }
-  .card { background: var(--panel); border-radius: 10px; width: min(640px, 100%); max-height: 100%; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .card { background: var(--win-bg); border-radius: 10px; width: min(640px, 100%); max-height: 100%; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
   .card.small { width: min(420px, 100%); }
   .card h2 { margin: 0; font-size: 20px; }
   .f-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
   .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
   .fld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
-  .fld input, .fld select, .fld textarea { font: inherit; font-size: 14px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .fld input, .fld select, .fld textarea { font: inherit; font-size: 14px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--win-line); border-radius: 6px; background: var(--panel); }
   .fld input[readonly] { background: var(--bg); }
   .fld input.bad { background: var(--bad-bg); color: var(--bad-ink); }
   .fld.edit input, .fld.edit select, .fld.edit textarea { border-color: var(--accent); }
   .fld textarea { min-height: 110px; resize: vertical; width: 100%; }
   .fld input:focus-visible, .fld select:focus-visible, .fld textarea:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .fld .clips { display: flex; gap: 2px; min-height: 32px; align-items: center; }
-  hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; }
+  hr.sep { border: 0; border-top: 1px solid var(--win-line); margin: 0; }
+  #dlg-util { z-index: 4; }
+  .btn.blue { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .btn.blue:hover { filter: brightness(1.1); background: var(--blue); }
+  #u-corps tr { cursor: pointer; }
   .aff { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 12px 16px; min-height: 56px; }
   .foot { display: flex; justify-content: flex-end; gap: 10px; }
   .btn { padding: 7px 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; }
@@ -305,7 +311,7 @@
       '<aside><h2>Plage</h2><div id="liste"></div></aside>' +
       '<main><div class="bar"><h1 id="titre"></h1>' +
       '<input class="search" id="q" type="search" placeholder="Rechercher une référence" aria-label="Rechercher">' +
-      '<label class="sw"><input type="checkbox" id="dispo" checked><span class="track"></span><span>Dispo uniquement</span></label><button class="btn" id="b-util" style="white-space:nowrap"></button></div>' +
+      '<label class="sw"><input type="checkbox" id="dispo" checked><span class="track"></span><span>Dispo uniquement</span></label><button class="btn blue" id="b-util" style="white-space:nowrap"></button></div>' +
       '<div class="wrap"><table><thead><tr>' +
       '<th class="mini" title="Alerte"' + '><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v5M12 17.5v.5"/></svg></th>' +
       "<th>Référence</th><th>Type</th><th>Cadran</th><th>P min / P max</th><th>Incertitude</th><th>Validité</th><th>État</th><th class='ctr'>Affecté</th>" +
@@ -628,7 +634,7 @@
         choisir(actif);
       }
     });
-    document.getElementById("dlg-fiche").onclick = e => { if (!wrap.contains(e.target)) fermer(); };
+    document.getElementById("dlg-fiche").onclick = e => { if (!e.composedPath().includes(wrap)) fermer(); };
     maj();
     return { get value() { return valeur; }, focus() { btn.focus(); } };
   }
@@ -653,10 +659,14 @@
       plageMax(a.Plage) - plageMax(b.Plage) ||
       txt(a.Reference).localeCompare(txt(b.Reference), "fr", { numeric: true }));
     c.innerHTML = liste.map(r =>
-      "<tr><td>" + esc(r.Plage) + '</td><td class="ref">' + esc(r.Reference) + "</td><td>" + esc(r.Prispar) + "</td><td>" +
+      '<tr data-id="' + r.id + '"><td>' + esc(r.Plage) + '</td><td class="ref">' + esc(r.Reference) + "</td><td>" + esc(r.Prispar) + "</td><td>" +
       esc(r.Affaire) + "</td><td>" + esc(fmtDate(r.Datepret)) + '</td><td class="mini">' + liensPDF(r) + "</td></tr>").join("");
     document.getElementById("u-vide").hidden = liste.length > 0;
-    c.querySelectorAll(".clip").forEach(b => b.addEventListener("click", () => ouvrirVisionneuse(+b.dataset.pj)));
+    c.querySelectorAll(".clip").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); ouvrirVisionneuse(+b.dataset.pj); }));
+    c.querySelectorAll("tr").forEach(tr => {
+      tr.addEventListener("click", () => grist.setCursorPos({ rowId: +tr.dataset.id }));
+      tr.addEventListener("dblclick", () => ouvrirFiche(+tr.dataset.id));
+    });
   }
 
   function highlight() {
