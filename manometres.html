@@ -14,16 +14,14 @@
     --line: #dbe2e8;
     --accent: #0b6e8a;
     --accent-soft: #dff1f6;
-    --ok-bg: #d8f3dc; --ok-ink: #1b5e2b;
-    --warn-bg: #fdebc8; --warn-ink: #7a4b00;
+    --green: #2e9e4f;
     --bad-bg: #fcd5d5; --bad-ink: #8a1c1c;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #151b21; --panel: #1d252d; --ink: #e6ecf1; --muted: #8fa1b2;
       --line: #2f3b46; --accent: #4cc3e0; --accent-soft: #1d3a45;
-      --ok-bg: #1d3b26; --ok-ink: #9be3ab;
-      --warn-bg: #46361a; --warn-ink: #f3cd85;
+      --green: #3fbf63;
       --bad-bg: #4a2323; --bad-ink: #f5a6a6;
     }
   }
@@ -48,16 +46,25 @@
   }
   .plage:hover { background: var(--accent-soft); }
   .plage[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-  .plage:focus-visible, .search:focus-visible, .go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .plage:focus-visible, .search:focus-visible, .pdf:focus-visible, .sw input:focus-visible + .track { outline: 2px solid var(--accent); outline-offset: 2px; }
   .plage .n { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
   .plage.vide { color: var(--muted); }
   main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 14px; gap: 10px; }
-  .bar { display: flex; align-items: center; gap: 12px; }
+  .bar { display: flex; align-items: center; gap: 16px; }
   .bar h1 { font-size: 16px; margin: 0; flex: 1; }
   .search {
     padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px;
-    background: var(--panel); color: inherit; font: inherit; width: 200px;
+    background: var(--panel); color: inherit; font: inherit; width: 190px;
   }
+  /* Interrupteur */
+  .sw { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
+  .sw input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .track { width: 38px; height: 22px; border-radius: 999px; background: #b7c2cc; position: relative; transition: background .15s; flex: none; }
+  .track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+  .sw input:checked + .track { background: var(--green); }
+  .sw input:checked + .track::after { transform: translateX(16px); }
+  @media (prefers-reduced-motion: reduce) { .track, .track::after { transition: none; } }
+
   .wrap { flex: 1; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 8px 12px; text-align: left; white-space: nowrap; }
@@ -69,60 +76,115 @@
   td.ref { font-weight: 600; font-variant-numeric: tabular-nums; }
   td.num { font-variant-numeric: tabular-nums; }
   .tag { display: inline-block; padding: 2px 10px; border-radius: 4px; font-size: 13px; background: var(--line); }
-  .tag.ok { background: var(--ok-bg); color: var(--ok-ink); }
-  .tag.warn { background: var(--warn-bg); color: var(--warn-ink); }
   .tag.bad { background: var(--bad-bg); color: var(--bad-ink); }
-  .go { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 2px 6px; border-radius: 4px; }
-  .go:hover { color: var(--accent); }
+  .pdf {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; margin-right: 4px; border-radius: 4px;
+    background: #d94b4b; color: #fff; font-size: 9px; font-weight: 700; text-decoration: none; letter-spacing: .2px;
+  }
+  .pdf:hover { filter: brightness(1.12); }
   .empty { padding: 32px; text-align: center; color: var(--muted); }
   .msg { padding: 24px; color: var(--muted); }
-  @media (max-width: 560px) { aside { width: 130px; } .search { width: 120px; } }
+  @media (max-width: 640px) { aside { width: 130px; } .search { width: 120px; } .bar { flex-wrap: wrap; gap: 8px; } }
 </style>
 </head>
 <body>
-<div class="msg" id="msg">Chargement…</div>
+<div class="msg">Chargement…</div>
 
 <script>
-  // Colonnes à associer dans le panneau de configuration Grist
-  const COLONNES = [
-    { name: "Reference", title: "Référence", type: "Any" },
-    { name: "Plage",     title: "Plage",     type: "Any" },
-    { name: "Type",      title: "Type",      type: "Any", optional: true },
-    { name: "Cadran",    title: "Cadran",    type: "Any", optional: true },
-    { name: "Pmin",      title: "P min",     type: "Any", optional: true },
-    { name: "Pmax",      title: "P max",     type: "Any", optional: true },
-    { name: "Validite",  title: "Validité",  type: "Any", optional: true },
-    { name: "Etat",      title: "État",      type: "Any", optional: true }
-  ];
-  const TABLE_PLAGES = "Plages_manometres";   // ID de la table des plages
-  const COLONNE_PLAGE = "Plage";               // colonne affichée dans cette table
+  const TABLE_PRINCIPALE = "Manometres";
+  const TABLE_PLAGES = "Plages_manometres";
+  const COLONNE_PLAGE = "Plage";
+
+  // Noms possibles des colonnes (comparés sans accents, majuscules, espaces ni "_")
+  const ALIAS = {
+    Reference: ["reference"],
+    Plage:     ["plage"],
+    Type:      ["type"],
+    Cadran:    ["cadran"],
+    Pmin:      ["pmin"],
+    Pmax:      ["pmax"],
+    Validite:  ["validite"],
+    Etat:      ["etat"],
+    Dispo:     ["dispo"],
+    Certificat:["certificat"]
+  };
 
   let rows = [];
-  let plagesTable = [];      // plages issues de la table Plages_manometres
-  let plageActive = null;    // null = toutes
+  let plagesTable = [];
+  let plageActive = null;     // null = toutes
   let recherche = "";
+  let dispoSeulement = true;  // interrupteur actif par défaut
   let selectedId = null;
+  let couleursEtat = {};      // { choix: {fillColor, textColor, fontBold, ...} }
+  let nomsFichiers = {};      // { idPieceJointe: nom }
+  let jeton = null;           // { baseUrl, token }
+  let colEtatId = "Etat";
 
-  grist.ready({ requiredAccess: "full", columns: COLONNES });
+  grist.ready({ requiredAccess: "full" });
 
-  grist.onRecords(function (records, mappings) {
-    if (!mappings) { show("Associez les colonnes dans le panneau de configuration du widget."); return; }
-    rows = records.map(r => {
-      const m = grist.mapColumnNames(r);
-      return m ? Object.assign(m, { id: r.id }) : null;
-    }).filter(Boolean);
+  grist.onRecords(function (records) {
+    rows = records.map(normaliser);
     build();
   });
-
   grist.onRecord(r => { selectedId = r ? r.id : null; highlight(); });
 
-  // Charge la liste complète des plages (même celles sans manomètre)
+  // ----- Données complémentaires (échecs tolérés) -----
   grist.docApi.fetchTable(TABLE_PLAGES).then(t => {
     plagesTable = (t[COLONNE_PLAGE] || []).map(txt).filter(Boolean);
     build();
-  }).catch(() => { /* on se rabat sur les plages présentes dans les données */ });
+  }).catch(() => {});
 
-  // ---------- utilitaires ----------
+  chargerCouleursEtat();
+  grist.docApi.fetchTable("_grist_Attachments").then(t => {
+    (t.id || []).forEach((id, i) => { nomsFichiers[id] = t.fileName ? t.fileName[i] : ""; });
+    renderTable();
+  }).catch(() => {});
+  rafraichirJeton();
+
+  function chargerCouleursEtat() {
+    Promise.all([
+      grist.docApi.fetchTable("_grist_Tables"),
+      grist.docApi.fetchTable("_grist_Tables_column")
+    ]).then(([tables, cols]) => {
+      const iT = (tables.tableId || []).indexOf(TABLE_PRINCIPALE);
+      if (iT < 0) return;
+      const tableRef = tables.id[iT];
+      for (let i = 0; i < cols.id.length; i++) {
+        if (cols.parentId[i] === tableRef && cle(cols.colId[i]) === "etat") {
+          colEtatId = cols.colId[i];
+          try {
+            const opts = JSON.parse(cols.widgetOptions[i] || "{}");
+            couleursEtat = opts.choiceOptions || {};
+          } catch (e) {}
+        }
+      }
+      renderTable();
+    }).catch(() => {});
+  }
+
+  function rafraichirJeton() {
+    grist.docApi.getAccessToken({ readOnly: true }).then(t => {
+      jeton = t;
+      renderTable();
+      setTimeout(rafraichirJeton, Math.max(30000, (t.ttlMs || 300000) * 0.5));
+    }).catch(() => {});
+  }
+
+  // ----- Utilitaires -----
+  function cle(s) {
+    return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+  function normaliser(rec) {
+    const index = {};
+    Object.keys(rec).forEach(k => { index[cle(k)] = k; });
+    const out = { id: rec.id };
+    Object.keys(ALIAS).forEach(nom => {
+      const trouve = ALIAS[nom].find(a => index[a] !== undefined);
+      out[nom] = trouve ? rec[index[trouve]] : undefined;
+    });
+    return out;
+  }
   function txt(v) {
     if (v === null || v === undefined) return "";
     if (Array.isArray(v)) return v.join(", ");
@@ -143,37 +205,45 @@
     const d = toDate(v);
     return d ? d.toLocaleDateString("fr-FR", { timeZone: "UTC" }) : txt(v);
   }
-  function fmtNum(v) {
-    return typeof v === "number" ? v.toLocaleString("fr-FR") : txt(v);
-  }
+  function fmtNum(v) { return typeof v === "number" ? v.toLocaleString("fr-FR") : txt(v); }
   function esc(s) {
     return txt(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
-  function show(message) {
-    document.body.innerHTML = '<div class="msg">' + esc(message) + "</div>";
+  function estDispo(r) {
+    const v = r.Dispo;
+    return v === true || v === 1 || v === "true";
+  }
+  function idsPJ(v) {
+    // Colonne Pièces jointes : ["L", id1, id2, ...]
+    return Array.isArray(v) ? v.filter(x => typeof x === "number") : [];
   }
 
-  // ---------- rendu ----------
+  // ----- Rendu -----
+  function squelette() {
+    document.body.innerHTML =
+      '<aside><h2>Plage</h2><div id="liste"></div></aside>' +
+      '<main><div class="bar"><h1 id="titre"></h1>' +
+      '<input class="search" id="q" type="search" placeholder="Rechercher une référence" aria-label="Rechercher">' +
+      '<label class="sw"><input type="checkbox" id="dispo" checked><span class="track"></span><span>Dispo uniquement</span></label></div>' +
+      '<div class="wrap"><table><thead><tr>' +
+      "<th>Référence</th><th>Type</th><th>Cadran</th><th>P min / P max</th><th>Validité</th><th>État</th><th>Certificat</th>" +
+      '</tr></thead><tbody id="corps"></tbody></table><div id="vide" class="empty" hidden>Aucun manomètre pour cette sélection.</div></div></main>';
+    document.getElementById("q").addEventListener("input", e => { recherche = e.target.value.trim().toLowerCase(); build(); });
+    document.getElementById("dispo").addEventListener("change", e => { dispoSeulement = e.target.checked; build(); });
+  }
+
   function build() {
+    if (!document.getElementById("liste")) squelette();
+
+    const base = rows.filter(r => !dispoSeulement || estDispo(r));
     const compte = {};
-    rows.forEach(r => { const p = txt(r.Plage); compte[p] = (compte[p] || 0) + 1; });
-    const noms = Array.from(new Set(plagesTable.concat(Object.keys(compte)))).filter(Boolean);
+    base.forEach(r => { const p = txt(r.Plage); compte[p] = (compte[p] || 0) + 1; });
+    const noms = Array.from(new Set(plagesTable.concat(rows.map(r => txt(r.Plage))))).filter(Boolean);
     noms.sort((a, b) => plageMax(a) - plageMax(b) || a.localeCompare(b, "fr"));
     if (plageActive !== null && !noms.includes(plageActive)) plageActive = null;
 
-    if (!document.getElementById("liste")) {
-      document.body.innerHTML =
-        '<aside><h2>Plage</h2><div id="liste"></div></aside>' +
-        '<main><div class="bar"><h1 id="titre"></h1>' +
-        '<input class="search" id="q" type="search" placeholder="Rechercher une référence" aria-label="Rechercher"></div>' +
-        '<div class="wrap"><table><thead><tr>' +
-        "<th>Référence</th><th>Type</th><th>Cadran</th><th>P min / P max</th><th>Validité</th><th>État</th><th></th>" +
-        '</tr></thead><tbody id="corps"></tbody></table><div id="vide" class="empty" hidden>Aucun manomètre pour cette sélection.</div></div></main>';
-      document.getElementById("q").addEventListener("input", e => { recherche = e.target.value.trim().toLowerCase(); renderTable(); });
-    }
-
     const liste = document.getElementById("liste");
-    const items = [{ nom: null, label: "Toutes", n: rows.length }]
+    const items = [{ nom: null, label: "Toutes", n: base.length }]
       .concat(noms.map(n => ({ nom: n, label: n, n: compte[n] || 0 })));
     liste.innerHTML = items.map((it, i) =>
       '<button class="plage' + (it.n === 0 ? " vide" : "") + '" data-i="' + i + '" aria-pressed="' + (it.nom === plageActive) + '">' +
@@ -185,43 +255,55 @@
     renderTable();
   }
 
-  function etatClasse(e) {
-    const s = txt(e).toLowerCase();
-    if (s.startsWith("neuf") || s === "bon") return "ok";
-    if (s.startsWith("mauvais") || s === "hs") return "bad";
-    return "";
+  function tagEtat(etat) {
+    if (!etat) return "";
+    const o = couleursEtat[etat] || {};
+    let style = "";
+    if (o.fillColor) style += "background:" + o.fillColor + ";";
+    if (o.textColor) style += "color:" + o.textColor + ";";
+    if (o.fontBold) style += "font-weight:bold;";
+    if (o.fontItalic) style += "font-style:italic;";
+    if (o.fontUnderline) style += "text-decoration:underline;";
+    if (o.fontStrikethrough) style += "text-decoration:line-through;";
+    return '<span class="tag" style="' + style + '">' + esc(etat) + "</span>";
+  }
+
+  function liensPDF(r) {
+    return idsPJ(r.Certificat).map(id => {
+      const nom = nomsFichiers[id] || ("Pièce jointe " + id);
+      if (!jeton) return '<span class="pdf" title="' + esc(nom) + '">PDF</span>';
+      const url = jeton.baseUrl + "/attachments/" + id + "/download?auth=" + encodeURIComponent(jeton.token);
+      return '<a class="pdf" href="' + url + '" target="_blank" rel="noopener" title="' + esc(nom) + '" aria-label="Ouvrir ' + esc(nom) + '">PDF</a>';
+    }).join("");
   }
 
   function renderTable() {
+    const corps = document.getElementById("corps");
+    if (!corps) return;
     document.getElementById("titre").textContent = plageActive === null ? "Tous les manomètres" : plageActive;
     const aujourdhui = new Date();
     const vus = rows.filter(r =>
+      (!dispoSeulement || estDispo(r)) &&
       (plageActive === null || txt(r.Plage) === plageActive) &&
       (!recherche || txt(r.Reference).toLowerCase().includes(recherche))
     ).sort((a, b) => txt(a.Reference).localeCompare(txt(b.Reference), "fr", { numeric: true }));
 
-    document.getElementById("corps").innerHTML = vus.map(r => {
+    corps.innerHTML = vus.map(r => {
       const d = toDate(r.Validite);
       const perime = d && d < aujourdhui;
-      const etat = txt(r.Etat);
       return '<tr data-id="' + r.id + '"' + (r.id === selectedId ? ' class="sel"' : "") + ">" +
         '<td class="ref">' + esc(r.Reference) + "</td>" +
         "<td>" + esc(r.Type) + "</td>" +
         "<td>" + esc(r.Cadran) + "</td>" +
         '<td class="num">' + esc(fmtNum(r.Pmin)) + " / " + esc(fmtNum(r.Pmax)) + "</td>" +
-        '<td><span class="tag ' + (perime ? "bad" : "") + '">' + esc(fmtDate(r.Validite)) + "</span></td>" +
-        "<td>" + (etat ? '<span class="tag ' + etatClasse(etat) + '">' + esc(etat) + "</span>" : "") + "</td>" +
-        '<td><button class="go" title="Ouvrir la fiche" aria-label="Ouvrir la fiche">&#9993;</button></td></tr>';
+        '<td><span class="tag' + (perime ? " bad" : "") + '">' + esc(fmtDate(r.Validite)) + "</span></td>" +
+        "<td>" + tagEtat(txt(r.Etat)) + "</td>" +
+        "<td>" + liensPDF(r) + "</td></tr>";
     }).join("");
     document.getElementById("vide").hidden = vus.length > 0;
 
-    document.querySelectorAll("#corps tr").forEach(tr => {
-      const id = +tr.dataset.id;
-      tr.addEventListener("click", () => grist.setCursorPos({ rowId: id }));
-      tr.querySelector(".go").addEventListener("click", e => {
-        e.stopPropagation();
-        grist.setCursorPos({ rowId: id });
-      });
+    corps.querySelectorAll("tr").forEach(tr => {
+      tr.addEventListener("click", () => grist.setCursorPos({ rowId: +tr.dataset.id }));
     });
   }
 
