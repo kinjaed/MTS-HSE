@@ -57,7 +57,7 @@
   .bar h1 { font-size: 16px; margin: 0; flex: 1; }
   .search {
     padding: 6px 10px; border: 1px solid var(--search-line); border-radius: 6px;
-    background: var(--search-bg); color: inherit; font: inherit; width: 190px;
+    background: var(--search-bg); color: inherit; font: inherit; width: 250px;
   }
   /* Interrupteur */
   .sw { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; white-space: nowrap; }
@@ -104,6 +104,35 @@
   .v-body { flex: 1; min-height: 0; background: #888; }
   .v-body iframe { width: 100%; height: 100%; border: 0; background: #fff; }
   .v-body .err { padding: 24px; color: #fff; }
+  /* Fiche détail */
+  .dlg { position: fixed; inset: 0; background: rgba(10, 16, 22, .55); display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+  .dlg.z6 { z-index: 6; }
+  .dlg.z7 { z-index: 7; }
+  .dlg[hidden] { display: none; }
+  .card { background: var(--panel); border-radius: 10px; width: min(640px, 100%); max-height: 100%; overflow: auto; padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+  .card.small { width: min(420px, 100%); }
+  .card h2 { margin: 0; font-size: 20px; }
+  .f-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-end; }
+  .fld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); min-width: 0; }
+  .fld input, .fld select, .fld textarea { font: inherit; font-size: 14px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .fld input[readonly] { background: var(--bg); }
+  .fld input.bad { background: var(--bad-bg); color: var(--bad-ink); }
+  .fld.edit input, .fld.edit select, .fld.edit textarea { border-color: var(--accent); }
+  .fld textarea { min-height: 110px; resize: vertical; width: 100%; }
+  .fld input:focus-visible, .fld select:focus-visible, .fld textarea:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .fld .clips { display: flex; gap: 2px; min-height: 32px; align-items: center; }
+  hr.sep { border: 0; border-top: 1px solid var(--line); margin: 0; }
+  .aff { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 12px 16px; min-height: 56px; }
+  .foot { display: flex; justify-content: flex-end; gap: 10px; }
+  .btn { padding: 7px 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: inherit; font: inherit; cursor: pointer; }
+  .btn:hover { background: var(--accent-soft); }
+  .btn.prim { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.prim:hover { filter: brightness(1.1); }
+  .btn.big { padding: 10px 36px; font-size: 15px; }
+  .btn.warn { border-color: var(--dot-orange); color: var(--dot-orange); }
+  .errmsg { color: var(--bad-ink); background: var(--bad-bg); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
+  .errmsg:empty { display: none; }
   .empty { padding: 32px; text-align: center; color: var(--muted); }
   .msg { padding: 24px; color: var(--muted); }
   @media (max-width: 640px) { aside { width: 130px; } .search { width: 120px; } .bar { flex-wrap: wrap; gap: 8px; } }
@@ -131,10 +160,19 @@
     Certificat:["certificat"],
     Incertitude:["incertitude"],
     Alerte:    ["alerte"],
-    OK:        ["ok"]
+    OK:        ["ok"],
+    Prispar:   ["prispar"],
+    Affaire:   ["affaire"],
+    Datepret:  ["datepret"],
+    Commentaires: ["commentaires"],
+    COFRAC:    ["cofrac"],
+    Datecertificat: ["datecertificat"]
   };
 
   const CLIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2"/></svg>';
+  const cles = {};            // identifiants réels des colonnes
+  let choixEtat = [];
+  let ficheId = null;
   let rows = [];
   let plagesTable = [];
   let plageActive = null;     // null = toutes
@@ -151,6 +189,7 @@
   grist.onRecords(function (records) {
     rows = records.map(normaliser);
     build();
+    if (ficheId !== null) renderAffect();
   });
   grist.onRecord(r => { selectedId = r ? r.id : null; highlight(); });
 
@@ -181,6 +220,7 @@
           try {
             const opts = JSON.parse(cols.widgetOptions[i] || "{}");
             couleursEtat = opts.choiceOptions || {};
+            choixEtat = opts.choices || [];
           } catch (e) {}
         }
       }
@@ -207,6 +247,7 @@
     Object.keys(ALIAS).forEach(nom => {
       const trouve = ALIAS[nom].find(a => index[a] !== undefined);
       out[nom] = trouve ? rec[index[trouve]] : undefined;
+      if (trouve) cles[nom] = index[trouve];
     });
     return out;
   }
@@ -260,7 +301,8 @@
       '<div class="v-body" id="v-body"></div></div></div>';
     document.getElementById("v-close").addEventListener("click", fermerVisionneuse);
     document.getElementById("viewer").addEventListener("click", e => { if (e.target.id === "viewer") fermerVisionneuse(); });
-    document.addEventListener("keydown", e => { if (e.key === "Escape") fermerVisionneuse(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") fermerHaut(); });
+    ajouterDialogues();
     document.getElementById("q").addEventListener("input", e => { recherche = e.target.value.trim().toLowerCase(); build(); });
     document.getElementById("dispo").addEventListener("change", e => { dispoSeulement = e.target.checked; build(); });
   }
@@ -377,11 +419,160 @@
 
     corps.querySelectorAll("tr").forEach(tr => {
       tr.addEventListener("click", () => grist.setCursorPos({ rowId: +tr.dataset.id }));
+      tr.addEventListener("dblclick", () => ouvrirFiche(+tr.dataset.id));
     });
     corps.querySelectorAll(".clip").forEach(b => b.addEventListener("click", e => {
       e.stopPropagation();
       ouvrirVisionneuse(+b.dataset.pj);
     }));
+  }
+
+  // ----- Fiche détail -----
+  function ajouterDialogues() {
+    document.body.insertAdjacentHTML("beforeend",
+      '<div class="dlg" id="dlg-fiche" hidden></div>' +
+      '<div class="dlg z6" id="dlg-aff" hidden></div>' +
+      '<div class="dlg z7" id="dlg-conf" hidden></div>');
+  }
+  function ligne(id) { return rows.find(r => r.id === id); }
+  function visible(id) { const e = document.getElementById(id); return e && !e.hidden; }
+  function fermerHaut() {
+    if (visible("viewer")) fermerVisionneuse();
+    else if (visible("dlg-conf")) document.getElementById("dlg-conf").hidden = true;
+    else if (visible("dlg-aff")) document.getElementById("dlg-aff").hidden = true;
+    else if (visible("dlg-fiche")) fermerFiche();
+  }
+  function fermerFiche() {
+    ficheId = null;
+    const f = document.getElementById("dlg-fiche");
+    f.hidden = true; f.innerHTML = "";
+  }
+  function estPris(r) { return txt(r.Prispar).trim() !== "" || txt(r.Affaire).trim() !== ""; }
+  function champ(label, val, cls) {
+    return '<label class="fld"><span>' + label + '</span><input readonly value="' + esc(val) + '"' + (cls ? ' class="' + cls + '"' : "") + "></label>";
+  }
+  function aujourdhuiISO() {
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function ecrire(id, patch) {
+    const fields = {};
+    Object.keys(patch).forEach(n => { if (cles[n]) fields[cles[n]] = patch[n]; });
+    return grist.getTable().update({ id: id, fields: fields }).then(() => {
+      const r = ligne(id);
+      if (r) Object.assign(r, patch);
+    });
+  }
+  function colorerSelect(sel) {
+    const o = couleursEtat[sel.value] || {};
+    sel.style.background = o.fillColor || "";
+    sel.style.color = o.textColor || "";
+    sel.style.fontWeight = o.fontBold ? "bold" : "";
+  }
+
+  function ouvrirFiche(id) {
+    const r = ligne(id);
+    if (!r) return;
+    ficheId = id;
+    const d = toDate(r.Validite);
+    const perime = d && d < new Date();
+    const etat = txt(r.Etat);
+    const choix = Array.from(new Set(choixEtat.concat(Object.keys(couleursEtat), rows.map(x => txt(x.Etat))))).filter(Boolean);
+    if (etat && !choix.includes(etat)) choix.push(etat);
+    const options = '<option value=""></option>' + choix.map(c => "<option" + (c === etat ? " selected" : "") + ">" + esc(c) + "</option>").join("");
+
+    const f = document.getElementById("dlg-fiche");
+    f.innerHTML =
+      '<div class="card" role="dialog" aria-modal="true" aria-label="Fiche du manomètre">' +
+      '<div class="f-head"><h2>' + esc(r.Reference) + "</h2>" +
+      '<label class="fld edit"><span>État</span><select id="f-etat">' + options + "</select></label></div>" +
+      '<div class="row">' + champ("Type", r.Type) + champ("Cadran", r.Cadran) + "</div>" +
+      '<div class="row">' + champ("Plage", r.Plage) + champ("Incertitude", fmtNum(r.Incertitude)) + champ("COFRAC", r.COFRAC) + "</div>" +
+      '<hr class="sep">' +
+      '<div class="row">' + champ("Date du certificat", fmtDate(r.Datecertificat)) + champ("Validité", fmtDate(r.Validite), perime ? "bad" : "") +
+      '<div class="fld"><span>Certificat</span><div class="clips" id="f-clips">' + liensPDF(r) + "</div></div></div>" +
+      '<hr class="sep">' +
+      '<div class="aff" id="f-aff"></div>' +
+      '<hr class="sep">' +
+      '<label class="fld edit"><span>Commentaires</span><textarea id="f-com">' + esc(r.Commentaires) + "</textarea></label>" +
+      '<div id="f-err" class="errmsg"></div>' +
+      '<div class="foot"><button class="btn" id="f-annuler">Annuler</button><button class="btn prim" id="f-ok">OK</button></div></div>';
+    f.hidden = false;
+
+    const sel = document.getElementById("f-etat");
+    colorerSelect(sel);
+    sel.addEventListener("change", () => colorerSelect(sel));
+    f.querySelectorAll(".clip").forEach(b => b.addEventListener("click", () => ouvrirVisionneuse(+b.dataset.pj)));
+    document.getElementById("f-annuler").addEventListener("click", fermerFiche);
+    document.getElementById("f-ok").addEventListener("click", () => {
+      const cur = ligne(id) || r;
+      const patch = {};
+      if (sel.value !== txt(cur.Etat)) patch.Etat = sel.value;
+      const com = document.getElementById("f-com").value;
+      if (com !== txt(cur.Commentaires)) patch.Commentaires = com;
+      if (!Object.keys(patch).length) { fermerFiche(); return; }
+      ecrire(id, patch).then(fermerFiche).catch(e => {
+        document.getElementById("f-err").textContent = "Enregistrement impossible : " + (e && e.message ? e.message : e);
+      });
+    });
+    renderAffect();
+    sel.focus();
+  }
+
+  function renderAffect() {
+    const z = document.getElementById("f-aff");
+    const r = ligne(ficheId);
+    if (!z || !r) return;
+    if (estPris(r)) {
+      z.innerHTML = champ("Utilisateur", r.Prispar) + champ("Affaire", r.Affaire) + champ("Date de prêt", fmtDate(r.Datepret)) +
+        '<button class="btn warn" id="f-retour">Retour</button>';
+      document.getElementById("f-retour").addEventListener("click", () => {
+        confirmer("Confirmer le retour du manomètre ? L'utilisateur, l'affaire et la date de prêt seront effacés.", () => {
+          ecrire(ficheId, { Prispar: "", Affaire: "", Datepret: null }).then(renderAffect).catch(e => {
+            document.getElementById("f-err").textContent = "Retour impossible : " + (e && e.message ? e.message : e);
+          });
+        });
+      });
+    } else {
+      z.innerHTML = '<button class="btn prim big" id="f-affecter">Affecter</button>';
+      document.getElementById("f-affecter").addEventListener("click", ouvrirAffecter);
+    }
+  }
+
+  function confirmer(message, onYes) {
+    const c = document.getElementById("dlg-conf");
+    c.innerHTML = '<div class="card small" role="alertdialog" aria-modal="true"><div>' + esc(message) + "</div>" +
+      '<div class="foot"><button class="btn" id="c-non">Annuler</button><button class="btn prim" id="c-oui">Confirmer</button></div></div>';
+    c.hidden = false;
+    document.getElementById("c-non").addEventListener("click", () => { c.hidden = true; });
+    document.getElementById("c-oui").addEventListener("click", () => { c.hidden = true; onYes(); });
+    document.getElementById("c-oui").focus();
+  }
+
+  function ouvrirAffecter() {
+    const a = document.getElementById("dlg-aff");
+    a.innerHTML = '<div class="card small" role="dialog" aria-modal="true" aria-label="Affecter le manomètre"><h2>Affecter</h2>' +
+      '<label class="fld edit"><span>Utilisateur</span><input id="a-user" type="text"></label>' +
+      '<label class="fld edit"><span>Affaire</span><input id="a-aff" type="text"></label>' +
+      '<label class="fld edit"><span>Date de prêt</span><input id="a-date" type="date" value="' + aujourdhuiISO() + '"></label>' +
+      '<div id="a-err" class="errmsg"></div>' +
+      '<div class="foot"><button class="btn" id="a-annuler">Annuler</button><button class="btn prim" id="a-ok">OK</button></div></div>';
+    a.hidden = false;
+    document.getElementById("a-user").focus();
+    document.getElementById("a-annuler").addEventListener("click", () => { a.hidden = true; });
+    document.getElementById("a-ok").addEventListener("click", () => {
+      const user = document.getElementById("a-user").value.trim();
+      const aff = document.getElementById("a-aff").value.trim();
+      const dv = document.getElementById("a-date").value;
+      const err = document.getElementById("a-err");
+      if (!user && !aff) { err.textContent = "Renseignez au moins l'utilisateur ou l'affaire."; return; }
+      let ts = null;
+      if (dv) { const p = dv.split("-").map(Number); ts = Date.UTC(p[0], p[1] - 1, p[2]) / 1000; }
+      ecrire(ficheId, { Prispar: user, Affaire: aff, Datepret: ts }).then(() => {
+        a.hidden = true;
+        renderAffect();
+      }).catch(e => { err.textContent = "Enregistrement impossible : " + (e && e.message ? e.message : e); });
+    });
   }
 
   function highlight() {
