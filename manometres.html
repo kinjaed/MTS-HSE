@@ -133,6 +133,21 @@
   .btn.warn { border-color: var(--dot-orange); color: var(--dot-orange); }
   .errmsg { color: var(--bad-ink); background: var(--bad-bg); border-radius: 6px; padding: 6px 10px; font-size: 13px; }
   .errmsg:empty { display: none; }
+  /* Liste État avec pastilles */
+  .combo { position: relative; }
+  .combo-btn { display: flex; align-items: center; gap: 8px; min-width: 160px; font: inherit; font-size: 14px; color: var(--ink); padding: 6px 8px; border: 1px solid var(--accent); border-radius: 6px; background: var(--panel); cursor: pointer; text-align: left; }
+  .combo-btn .clabel { flex: 1; }
+  .combo-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .combo-list { position: absolute; right: 0; top: calc(100% + 2px); min-width: 100%; margin: 0; padding: 4px; list-style: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.25); z-index: 3; max-height: 220px; overflow: auto; }
+  .combo-list[hidden] { display: none; }
+  .combo-list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 4px; cursor: pointer; white-space: nowrap; font-size: 14px; color: var(--ink); }
+  .combo-list li:hover, .combo-list li.actif { background: var(--accent-soft); }
+  .combo-list li[aria-selected="true"] { font-weight: 600; }
+  .cdot { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0,0,0,.3); flex: none; display: inline-block; }
+  .coche svg { width: 16px; height: 16px; color: var(--green); vertical-align: middle; }
+  th.ctr, td.ctr { text-align: center; }
+  .card.wide { width: min(900px, 100%); }
+  .card .wrap { flex: none; max-height: 60vh; }
   .empty { padding: 32px; text-align: center; color: var(--muted); }
   .msg { padding: 24px; color: var(--muted); }
   @media (max-width: 640px) { aside { width: 130px; } .search { width: 120px; } .bar { flex-wrap: wrap; gap: 8px; } }
@@ -290,10 +305,10 @@
       '<aside><h2>Plage</h2><div id="liste"></div></aside>' +
       '<main><div class="bar"><h1 id="titre"></h1>' +
       '<input class="search" id="q" type="search" placeholder="Rechercher une référence" aria-label="Rechercher">' +
-      '<label class="sw"><input type="checkbox" id="dispo" checked><span class="track"></span><span>Dispo uniquement</span></label></div>' +
+      '<label class="sw"><input type="checkbox" id="dispo" checked><span class="track"></span><span>Dispo uniquement</span></label><button class="btn" id="b-util" style="white-space:nowrap"></button></div>' +
       '<div class="wrap"><table><thead><tr>' +
       '<th class="mini" title="Alerte"' + '><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M12 3 2 20h20L12 3z"/><path d="M12 10v5M12 17.5v.5"/></svg></th>' +
-      "<th>Référence</th><th>Type</th><th>Cadran</th><th>P min / P max</th><th>Incertitude</th><th>Validité</th><th>État</th>" +
+      "<th>Référence</th><th>Type</th><th>Cadran</th><th>P min / P max</th><th>Incertitude</th><th>Validité</th><th>État</th><th class='ctr'>Affecté</th>" +
       '<th class="mini" title="Certificat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.5 20a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9 9a1.8 1.8 0 0 1-2.6-2.6l8.2-8.2"/></svg></th>' +
       '</tr></thead><tbody id="corps"></tbody></table><div id="vide" class="empty" hidden>Aucun manomètre pour cette sélection.</div></div></main>' +
       '<div id="viewer" hidden role="dialog" aria-modal="true" aria-label="Certificat"><div class="v-box">' +
@@ -304,6 +319,7 @@
     document.addEventListener("keydown", e => { if (e.key === "Escape") fermerHaut(); });
     ajouterDialogues();
     document.getElementById("q").addEventListener("input", e => { recherche = e.target.value.trim().toLowerCase(); build(); });
+    document.getElementById("b-util").addEventListener("click", ouvrirUtilises);
     document.getElementById("dispo").addEventListener("change", e => { dispoSeulement = e.target.checked; build(); });
   }
 
@@ -393,6 +409,7 @@
   function renderTable() {
     const corps = document.getElementById("corps");
     if (!corps) return;
+    document.getElementById("b-util").textContent = "Manomètres utilisés (" + rows.filter(estUtilise).length + ")";
     document.getElementById("titre").textContent = plageActive === null ? "Tous les manomètres" : plageActive;
     const aujourdhui = new Date();
     const vus = rows.filter(r =>
@@ -413,9 +430,11 @@
         '<td class="num">' + esc(fmtNum(r.Incertitude)) + "</td>" +
         '<td><span class="tag' + (perime ? " bad" : "") + '">' + esc(fmtDate(r.Validite)) + "</span></td>" +
         "<td>" + tagEtat(txt(r.Etat)) + "</td>" +
+        '<td class="ctr">' + (estUtilise(r) ? COCHE : "") + "</td>" +
         '<td class="mini">' + liensPDF(r) + "</td></tr>";
     }).join("");
     document.getElementById("vide").hidden = vus.length > 0;
+    if (visible("dlg-util")) renderUtilises();
 
     corps.querySelectorAll("tr").forEach(tr => {
       tr.addEventListener("click", () => grist.setCursorPos({ rowId: +tr.dataset.id }));
@@ -432,7 +451,8 @@
     document.body.insertAdjacentHTML("beforeend",
       '<div class="dlg" id="dlg-fiche" hidden></div>' +
       '<div class="dlg z6" id="dlg-aff" hidden></div>' +
-      '<div class="dlg z7" id="dlg-conf" hidden></div>');
+      '<div class="dlg z7" id="dlg-conf" hidden></div>' +
+      '<div class="dlg" id="dlg-util" hidden></div>');
   }
   function ligne(id) { return rows.find(r => r.id === id); }
   function visible(id) { const e = document.getElementById(id); return e && !e.hidden; }
@@ -441,12 +461,15 @@
     else if (visible("dlg-conf")) document.getElementById("dlg-conf").hidden = true;
     else if (visible("dlg-aff")) document.getElementById("dlg-aff").hidden = true;
     else if (visible("dlg-fiche")) fermerFiche();
+    else if (visible("dlg-util")) document.getElementById("dlg-util").hidden = true;
   }
   function fermerFiche() {
     ficheId = null;
     const f = document.getElementById("dlg-fiche");
     f.hidden = true; f.innerHTML = "";
   }
+  function estUtilise(r) { return (r.OK === true || r.OK === 1) && !estDispo(r); }
+  const COCHE = '<span class="coche" role="img" aria-label="Affecté" title="Affecté"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l5 5L20 7"/></svg></span>';
   function estPris(r) { return txt(r.Prispar).trim() !== "" || txt(r.Affaire).trim() !== ""; }
   function champ(label, val, cls) {
     return '<label class="fld"><span>' + label + '</span><input readonly value="' + esc(val) + '"' + (cls ? ' class="' + cls + '"' : "") + "></label>";
@@ -463,13 +486,6 @@
       if (r) Object.assign(r, patch);
     });
   }
-  function colorerSelect(sel) {
-    const o = couleursEtat[sel.value] || {};
-    sel.style.background = o.fillColor || "";
-    sel.style.color = o.textColor || "";
-    sel.style.fontWeight = o.fontBold ? "bold" : "";
-  }
-
   function ouvrirFiche(id) {
     const r = ligne(id);
     if (!r) return;
@@ -479,13 +495,12 @@
     const etat = txt(r.Etat);
     const choix = Array.from(new Set(choixEtat.concat(Object.keys(couleursEtat), rows.map(x => txt(x.Etat))))).filter(Boolean);
     if (etat && !choix.includes(etat)) choix.push(etat);
-    const options = '<option value=""></option>' + choix.map(c => "<option" + (c === etat ? " selected" : "") + ">" + esc(c) + "</option>").join("");
-
+    
     const f = document.getElementById("dlg-fiche");
     f.innerHTML =
       '<div class="card" role="dialog" aria-modal="true" aria-label="Fiche du manomètre">' +
       '<div class="f-head"><h2>' + esc(r.Reference) + "</h2>" +
-      '<label class="fld edit"><span>État</span><select id="f-etat">' + options + "</select></label></div>" +
+      '<div class="fld edit"><span>État</span><div class="combo" id="f-combo"><button type="button" class="combo-btn" id="f-etat" aria-haspopup="listbox" aria-expanded="false"></button><ul class="combo-list" id="f-etat-list" role="listbox" hidden></ul></div></div></div>' +
       '<div class="row">' + champ("Type", r.Type) + champ("Cadran", r.Cadran) + "</div>" +
       '<div class="row">' + champ("Plage", r.Plage) + champ("Incertitude", fmtNum(r.Incertitude)) + champ("COFRAC", r.COFRAC) + "</div>" +
       '<hr class="sep">' +
@@ -499,9 +514,7 @@
       '<div class="foot"><button class="btn" id="f-annuler">Annuler</button><button class="btn prim" id="f-ok">OK</button></div></div>';
     f.hidden = false;
 
-    const sel = document.getElementById("f-etat");
-    colorerSelect(sel);
-    sel.addEventListener("change", () => colorerSelect(sel));
+    const sel = initCombo(choix, etat);
     f.querySelectorAll(".clip").forEach(b => b.addEventListener("click", () => ouvrirVisionneuse(+b.dataset.pj)));
     document.getElementById("f-annuler").addEventListener("click", fermerFiche);
     document.getElementById("f-ok").addEventListener("click", () => {
@@ -573,6 +586,77 @@
         renderAffect();
       }).catch(e => { err.textContent = "Enregistrement impossible : " + (e && e.message ? e.message : e); });
     });
+  }
+
+  function pastilleEtat(c) {
+    const o = couleursEtat[c] || {};
+    return '<span class="cdot" style="background:' + (o.fillColor || "transparent") + '"></span>';
+  }
+  function initCombo(choix, courant) {
+    let valeur = courant;
+    const wrap = document.getElementById("f-combo");
+    const btn = document.getElementById("f-etat");
+    const list = document.getElementById("f-etat-list");
+    const vals = [""].concat(choix);
+    list.innerHTML = vals.map((c, i) =>
+      '<li role="option" data-i="' + i + '">' + pastilleEtat(c) + "<span>" + (c ? esc(c) : "&nbsp;") + "</span></li>").join("");
+    let actif = Math.max(0, vals.indexOf(valeur));
+    function maj() {
+      btn.innerHTML = pastilleEtat(valeur) + '<span class="clabel">' + (valeur ? esc(valeur) : "&nbsp;") + '</span><span aria-hidden="true">&#9662;</span>';
+      list.querySelectorAll("li").forEach((li, i) => {
+        li.setAttribute("aria-selected", String(vals[i] === valeur));
+        li.classList.toggle("actif", i === actif);
+      });
+    }
+    function ouvrir() { list.hidden = false; btn.setAttribute("aria-expanded", "true"); maj(); }
+    function fermer() { list.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+    function choisir(i) { valeur = vals[i]; actif = i; fermer(); maj(); btn.focus(); }
+    btn.addEventListener("click", () => (list.hidden ? ouvrir() : fermer()));
+    list.addEventListener("click", e => {
+      const li = e.target.closest("li");
+      if (li) choisir(+li.dataset.i);
+    });
+    wrap.addEventListener("keydown", e => {
+      if (e.key === "Escape" && !list.hidden) { e.stopPropagation(); fermer(); btn.focus(); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (list.hidden) { ouvrir(); return; }
+        actif = Math.min(vals.length - 1, Math.max(0, actif + (e.key === "ArrowDown" ? 1 : -1)));
+        maj();
+      } else if ((e.key === "Enter" || e.key === " ") && !list.hidden) {
+        e.preventDefault();
+        choisir(actif);
+      }
+    });
+    document.getElementById("dlg-fiche").onclick = e => { if (!wrap.contains(e.target)) fermer(); };
+    maj();
+    return { get value() { return valeur; }, focus() { btn.focus(); } };
+  }
+
+  // ----- Fenêtre « Manomètres utilisés » -----
+  function ouvrirUtilises() {
+    const u = document.getElementById("dlg-util");
+    u.innerHTML = '<div class="card wide" role="dialog" aria-modal="true" aria-label="Manomètres utilisés">' +
+      '<div class="f-head"><h2>Manomètres utilisés</h2><button class="btn" id="u-fermer">Fermer</button></div>' +
+      '<div class="wrap"><table><thead><tr><th>Plage</th><th>Référence</th><th>Pris par</th><th>Affaire</th><th>Date de prêt</th>' +
+      '<th class="mini" title="Certificat">' + CLIP + '</th></tr></thead><tbody id="u-corps"></tbody></table>' +
+      '<div id="u-vide" class="empty" hidden>Aucun manomètre utilisé.</div></div></div>';
+    u.hidden = false;
+    document.getElementById("u-fermer").addEventListener("click", () => { u.hidden = true; });
+    renderUtilises();
+    document.getElementById("u-fermer").focus();
+  }
+  function renderUtilises() {
+    const c = document.getElementById("u-corps");
+    if (!c) return;
+    const liste = rows.filter(estUtilise).sort((a, b) =>
+      plageMax(a.Plage) - plageMax(b.Plage) ||
+      txt(a.Reference).localeCompare(txt(b.Reference), "fr", { numeric: true }));
+    c.innerHTML = liste.map(r =>
+      "<tr><td>" + esc(r.Plage) + '</td><td class="ref">' + esc(r.Reference) + "</td><td>" + esc(r.Prispar) + "</td><td>" +
+      esc(r.Affaire) + "</td><td>" + esc(fmtDate(r.Datepret)) + '</td><td class="mini">' + liensPDF(r) + "</td></tr>").join("");
+    document.getElementById("u-vide").hidden = liste.length > 0;
+    c.querySelectorAll(".clip").forEach(b => b.addEventListener("click", () => ouvrirVisionneuse(+b.dataset.pj)));
   }
 
   function highlight() {
